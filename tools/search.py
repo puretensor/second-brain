@@ -31,7 +31,11 @@ RRF_K = 60  # RRF constant (matches Nexus)
 def search(query: str, limit: int = 5, file_filter: str | None = None) -> list[dict]:
     """Hybrid search: BM25 + vector similarity fused via RRF."""
     overfetch = limit * 3
-    conn = psycopg2.connect(DB_DSN)
+    try:
+        conn = psycopg2.connect(DB_DSN)
+    except psycopg2.OperationalError as e:
+        print(f"ERROR: Cannot connect to database (fox-n1:30433/vantage): {e}", file=sys.stderr)
+        return []
 
     try:
         # Build optional WHERE clause for file filter
@@ -74,7 +78,7 @@ def search(query: str, limit: int = 5, file_filter: str | None = None) -> list[d
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
-                [vec_str, vec_str] + params_extra + [overfetch],
+                [vec_str] + params_extra + [vec_str, overfetch],
             )
             sem_rows = [
                 {"id": r[0], "file_path": r[1], "heading_path": r[2],

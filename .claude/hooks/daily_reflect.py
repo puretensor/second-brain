@@ -405,16 +405,38 @@ def log_result(date_str: str, stats: dict, summary: str):
 
 
 def extract_topics(daily_log: str) -> list[str]:
-    """Extract key topics from daily log for RAG queries."""
+    """Extract key topics from daily log for RAG queries.
+
+    Filters out scaffolding headings (dates, generic section names) to
+    produce more targeted RAG queries.
+    """
+    # Scaffolding terms to skip -- generic structure, not content
+    SCAFFOLDING = {
+        "work done", "decisions", "new facts", "pending", "context",
+        "session", "compaction extract", "historical context",
+        "overall assessment", "critical issues", "important improvements",
+        "nice-to-haves", "structural observations", "missing from phase",
+    }
+
     topics = []
-    # Grab headings
+    # Grab headings (skip generic ones)
     for match in re.finditer(r"^#{1,4}\s+(.+)$", daily_log, re.MULTILINE):
-        topics.append(match.group(1).strip())
+        heading = match.group(1).strip()
+        # Skip date-like headings, session markers, scaffolding
+        if re.match(r"^\d{4}-\d{2}-\d{2}", heading):
+            continue
+        if heading.lower().startswith("session:"):
+            continue
+        if any(heading.lower().startswith(s) for s in SCAFFOLDING):
+            continue
+        topics.append(heading)
     # Grab bold terms
     for match in re.finditer(r"\*\*([^*]+)\*\*", daily_log):
         term = match.group(1).strip().rstrip(":")
         if len(term) > 3 and len(term) < 80:
-            topics.append(term)
+            # Skip generic labels
+            if term.lower() not in SCAFFOLDING and not term.lower().startswith("context"):
+                topics.append(term)
     # Deduplicate, limit
     seen = set()
     unique = []
@@ -425,8 +447,11 @@ def extract_topics(daily_log: str) -> list[str]:
     return unique[:10]
 
 
-def get_rag_context(daily_log: str) -> str:
-    """Search pureMind RAG for historical context related to today's topics."""
+def get_rag_context(daily_log: str, target_date: str) -> str:
+    """Search pureMind RAG for historical context related to today's topics.
+
+    Excludes the current day's log from results to avoid circular context.
+    """
     SEARCH_TOOL = PUREMIND_ROOT / "tools" / "search.py"
     if not SEARCH_TOOL.exists():
         return "(RAG not available -- search.py not found)"
@@ -439,7 +464,7 @@ def get_rag_context(daily_log: str) -> str:
     query = " ".join(topics[:5])
     try:
         result = subprocess.run(
-            [sys.executable, str(SEARCH_TOOL), query, "--limit", "5", "--json"],
+            [sys.executable, str(SEARCH_TOOL), query, "--limit", "8", "--json"],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode != 0:
@@ -449,8 +474,15 @@ def get_rag_context(daily_log: str) -> str:
         if not results:
             return "(no relevant historical context found)"
 
+        # Filter out the current day's log to avoid circular context
+        today_log_path = f"daily-logs/{target_date}.md"
+        filtered = [r for r in results if r["file_path"] != today_log_path][:5]
+
+        if not filtered:
+            return "(no relevant historical context found outside today's log)"
+
         lines = []
-        for r in results:
+        for r in filtered:
             lines.append(f"- [{r['file_path']}] {r['content'][:300]}")
         return "\n".join(lines)
 
@@ -478,7 +510,7 @@ def main():
     pending_content = read_file_safe(PENDING_FILE)
 
     # Fetch RAG context (even in dry-run to show what would be included)
-    historical_context = get_rag_context(daily_log)
+    historical_context = get_rag_context(daily_log, target_date)
 
     if dry_run:
         print(f"=== pureMind Reflection (DRY RUN) -- {target_date} ===\n")
@@ -519,6 +551,17 @@ def main():
     # Commit all changes (including reflection log)
     log_result(target_date, stats, summary)
     git_commit(f"reflect: {target_date} -- {summary[:60]}")
+
+    # Trigger incremental re-index (non-blocking)
+    index_script = PUREMIND_ROOT / "tools" / "index.py"
+    if index_script.exists():
+        try:
+            subprocess.Popen(
+                [sys.executable, str(index_script), "--quiet"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
 
     print(f"Reflection complete for {target_date}: +{stats['added']} -{stats['removed']} pending:{stats['pending_updated']} archived:{archived}")
 

@@ -14,26 +14,24 @@ import sys
 from functools import lru_cache
 
 MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
+MODEL_REVISION = "e5cf08aadaa33385f5990def41f7a23405aec398"  # Pinned for reproducibility
 EMBED_DIM = 768
 
 
 @lru_cache(maxsize=1)
 def _load_model():
     """Load the sentence-transformers model (cached singleton)."""
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(MODEL_NAME, trust_remote_code=True)
-    return model
+    try:
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer(MODEL_NAME, trust_remote_code=True, revision=MODEL_REVISION)
+        return model
+    except ImportError:
+        print("ERROR: sentence-transformers not installed. Run: pip3 install --user sentence-transformers", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"ERROR: Failed to load embedding model '{MODEL_NAME}': {e}", file=sys.stderr)
+        sys.exit(1)
 
-
-def embed_batch(texts: list[str]) -> list[list[float]]:
-    """Embed a batch of texts. Returns list of 768-dim vectors."""
-    if not texts:
-        return []
-    model = _load_model()
-    # nomic-embed-text expects "search_document: " or "search_query: " prefix
-    # For indexing, use "search_document: " prefix
-    embeddings = model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
-    return [vec.tolist() for vec in embeddings]
 
 
 def embed_query(text: str) -> list[float]:

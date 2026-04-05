@@ -52,15 +52,26 @@ def chunk_markdown(content: str, file_path: str = "") -> list[dict]:
 
 
 def _split_by_headings(content: str) -> list[dict]:
-    """Split content on heading boundaries, tracking breadcrumb path."""
+    """Split content on heading boundaries, tracking breadcrumb path.
+
+    Skips headings inside fenced code blocks (``` or ~~~).
+    """
     lines = content.splitlines(keepends=True)
     sections = []
     current_headings = {}  # level -> heading text
     current_lines = []
     current_path = ""
+    in_fence = False
 
     for line in lines:
-        match = HEADING_RE.match(line.rstrip())
+        stripped = line.rstrip()
+        # Track fenced code blocks
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            current_lines.append(line)
+            continue
+
+        match = HEADING_RE.match(stripped) if not in_fence else None
         if match:
             # Flush previous section
             text = "".join(current_lines).strip()
@@ -95,17 +106,29 @@ def _split_by_headings(content: str) -> list[dict]:
 
 
 def _merge_small_sections(sections: list[dict]) -> list[dict]:
-    """Merge sections smaller than MIN_CHUNK_CHARS with the previous section."""
+    """Merge sections smaller than MIN_CHUNK_CHARS with previous sibling section.
+
+    Only merges when sections share the same parent heading path to avoid
+    combining semantically unrelated content.
+    """
     if not sections:
         return sections
 
+    def _parent_path(path: str) -> str:
+        """Get parent heading path (everything before last ' > ')."""
+        if " > " in path:
+            return path.rsplit(" > ", 1)[0]
+        return ""
+
     merged = [sections[0]]
     for section in sections[1:]:
-        if len(section["content"]) < MIN_CHUNK_CHARS and merged:
-            merged[-1]["content"] += "\n\n" + section["content"]
+        prev = merged[-1]
+        same_parent = _parent_path(section["heading_path"]) == _parent_path(prev["heading_path"])
+        if len(section["content"]) < MIN_CHUNK_CHARS and merged and same_parent:
+            prev["content"] += "\n\n" + section["content"]
             # Keep the deeper heading path
-            if len(section["heading_path"]) > len(merged[-1]["heading_path"]):
-                merged[-1]["heading_path"] = section["heading_path"]
+            if len(section["heading_path"]) > len(prev["heading_path"]):
+                prev["heading_path"] = section["heading_path"]
         else:
             merged.append(section)
 

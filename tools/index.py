@@ -74,14 +74,14 @@ def get_stored_hashes(conn) -> dict[str, str]:
         return {row[0]: row[1] for row in cur.fetchall()}
 
 
-def delete_file_chunks(conn, file_path: str):
-    """Delete all chunks for a given file."""
-    with conn.cursor() as cur:
-        cur.execute("DELETE FROM puremind_chunks WHERE file_path = %s", (file_path,))
+def upsert_file_chunks(conn, file_path: str, chunks: list[dict], embeddings: list[list[float]], fhash: str):
+    """Upsert chunks with embeddings, then delete stale chunks beyond the new count.
 
-
-def insert_chunks(conn, file_path: str, chunks: list[dict], embeddings: list[list[float]], fhash: str):
-    """Insert chunks with embeddings into the database."""
+    Uses ON CONFLICT upsert (no DELETE-all first), so chunk IDs are stable for
+    unchanged positions. Stale chunks (higher chunk_index than new count) are
+    cleaned up in the same transaction.
+    """
+    max_new_index = len(chunks) - 1
     with conn.cursor() as cur:
         for chunk, embedding in zip(chunks, embeddings):
             vec_str = embedding_to_pgvector(embedding)
@@ -99,6 +99,11 @@ def insert_chunks(conn, file_path: str, chunks: list[dict], embeddings: list[lis
                 (file_path, chunk["heading_path"], chunk["chunk_index"],
                  chunk["content"], vec_str, fhash),
             )
+        # Clean up stale chunks from previous indexing (file may have fewer chunks now)
+        cur.execute(
+            "DELETE FROM puremind_chunks WHERE file_path = %s AND chunk_index > %s",
+            (file_path, max_new_index),
+        )
 
 
 def main():
@@ -112,7 +117,11 @@ def main():
     if verbose:
         print(f"Found {len(files)} indexable files in vault")
 
-    conn = psycopg2.connect(DB_DSN)
+    try:
+        conn = psycopg2.connect(DB_DSN)
+    except psycopg2.OperationalError as e:
+        print(f"ERROR: Cannot connect to database (fox-n1:30433/vantage): {e}", file=sys.stderr)
+        sys.exit(1)
     conn.autocommit = False
 
     try:
@@ -146,9 +155,8 @@ def main():
             texts = [c["content"] for c in chunks]
             embeddings = embed_documents(texts)
 
-            # Delete old chunks for this file, insert new
-            delete_file_chunks(conn, rel_path)
-            insert_chunks(conn, rel_path, chunks, embeddings, fhash)
+            # Upsert chunks + clean stale in one transaction
+            upsert_file_chunks(conn, rel_path, chunks, embeddings, fhash)
             conn.commit()
 
             indexed += 1
@@ -160,7 +168,8 @@ def main():
         current_files = {str(p.relative_to(VAULT_ROOT)) for p in files}
         orphan_files = stored_files - current_files
         for orphan in orphan_files:
-            delete_file_chunks(conn, orphan)
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM puremind_chunks WHERE file_path = %s", (orphan,))
             conn.commit()
             deleted += 1
             if verbose:

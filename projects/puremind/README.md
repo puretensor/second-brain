@@ -12,7 +12,7 @@ Sovereign second brain built on Claude Code CLI (Max 20x) + Obsidian + pgvector.
 
 - Single LLM: Claude Code (Max 20x subscription). No API keys, no local models.
 - Knowledge: Obsidian vault (Markdown-native), Git-versioned.
-- Search: pgvector + PostgreSQL FTS hybrid retrieval (Phase 3). Embeddings via sentence-transformers on Ray Trinity.
+- Search: pgvector + PostgreSQL FTS hybrid retrieval (Phase 3). Embeddings via nomic-embed-text-v1.5 (768-dim, local on TC).
 - Interaction: Claude Code CLI primary. Obsidian as visual canvas.
 - Cron: Systemd timer for daily reflection (23:00 UTC, Claude CLI). Heartbeat agent planned (Phase 6).
 

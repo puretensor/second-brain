@@ -38,7 +38,7 @@ Five planes, one LLM. Claude Code is the reasoning layer across all of them.
 - **Claude Code CLI** (Max 20x subscription) -- single LLM, no routing, no API keys
 - **Obsidian vault** (Markdown-native) -- portable, diffable, Git-versioned
 - **pgvector + PostgreSQL FTS** *(Phase 3)* -- hybrid retrieval with Reciprocal Rank Fusion
-- **sentence-transformers** (CPU) *(Phase 3)* -- all-MiniLM-L6-v2 for embeddings, distributed via Ray
+- **sentence-transformers** (CPU) *(Phase 3)* -- nomic-embed-text-v1.5 (768-dim) for embeddings, local on TC
 - **Git** -- every memory write commits with structured message
 
 ## Design Principles
