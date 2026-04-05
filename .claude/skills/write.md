@@ -1,6 +1,10 @@
 ---
 name: write
 description: Long-form writing in the operator's voice with vault context and style templates
+inputs: [topic, output_type]
+outputs: [document_path]
+writes_to: [knowledge/, projects/, knowledge/drafts/]
+side_effects: [vault_search]
 ---
 
 # Write

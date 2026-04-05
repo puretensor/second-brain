@@ -1,6 +1,10 @@
 ---
 name: draft-email
 description: Draft an email in the operator's voice using Gmail integration and style templates
+inputs: [recipient, subject, context]
+outputs: [draft_id]
+writes_to: []
+side_effects: [gmail_draft_creation, audit_log]
 ---
 
 # Draft Email
@@ -40,7 +44,7 @@ python3 ~/pureMind/.claude/integrations/gmail_integration.py create_draft \
 
 ## Constraints
 
-- **Draft only.** Never send. The operator must approve via Gmail or `/approve`.
-- **Always CC ops@puretensor.ai** on every email from hal@puretensor.ai. No exceptions.
+- **Draft only.** Never send. The operator reviews and sends from Gmail directly.
+- **Always CC ops@puretensor.ai** on every email from hal@puretensor.ai. Enforced in code by `create_draft()`.
 - **Accounts:** hal (default), ops, personal only. Ask the operator if unclear.
 - All operations are logged to the pm_audit table.

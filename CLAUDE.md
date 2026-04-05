@@ -4,7 +4,7 @@ This is the pureMind second brain vault. When working in this directory:
 
 1. Always load memory/soul.md, memory/user.md, memory/memory.md at session start.
 2. Every file change is auto-committed to Git via PostToolUse hook.
-3. Never store credentials, passwords, API keys, or tokens in this vault. They live in ~/.claude/ memory only.
+3. Never store credentials, passwords, API keys, or tokens in this vault. They live in `~/.config/puremind/secrets.env` (resolved via `tools/credentials.py`).
 4. memory.md must stay under 8K tokens (~5KB text). Curate aggressively.
 5. Daily logs go in daily-logs/YYYY-MM-DD.md.
 6. Knowledge files go in knowledge/ with clean markdown and no credential data.
@@ -12,7 +12,7 @@ This is the pureMind second brain vault. When working in this directory:
 8. Templates in templates/ are style guides, not executable code.
 
 ## Credential Safety
-This vault is a Git repository. Everything committed becomes permanent history. The .gitignore blocks common patterns, but the primary defence is discipline: never write credentials here. Reference them by pointer ("see ~/.claude/ memory") instead.
+This vault is a Git repository. Everything committed becomes permanent history. Credentials are externalized to `~/.config/puremind/secrets.env` (mode 0600, outside vault) and resolved via `tools/credentials.py`. The `.gitignore` blocks `*credentials*`, `*secrets*`, `*.env`. Never hardcode secrets in Git-tracked files.
 
 ## Memory Hierarchy (MemGPT-inspired)
 - **Register:** Live conversation context (ephemeral)
@@ -121,14 +121,14 @@ python3 ~/pureMind/.claude/integrations/telegram_integration.py post_alert "Depl
 
 ## Skills Framework (Phase 5)
 
-14 skills in `.claude/skills/`. Skills are markdown instructions that compose existing tools and integrations.
+15 skills in `.claude/skills/`. Skills are markdown instructions that compose existing tools and integrations. All have machine-readable YAML frontmatter (inputs, outputs, writes_to, side_effects).
 
 ### Skill Library
 
 | Skill | What It Does |
 |---|---|
 | `/briefing` | Morning briefing: calendar + email + pending + GitHub |
-| `/puremind-search` | Hybrid RAG search over vault (BM25 + pgvector) |
+| `/puremind-search` | Hybrid RAG search with optional --graph, --hyde, --lang |
 | `/gmail` | Gmail read + draft operations |
 | `/github` | GitHub read + comment operations |
 | `/calendar` | Calendar read-only operations |
@@ -141,6 +141,7 @@ python3 ~/pureMind/.claude/integrations/telegram_integration.py post_alert "Depl
 | `/research` | Vault-first deep research with web fallback and citations |
 | `/ingest` | Ingest URLs, PDFs, docs into knowledge base with provenance |
 | `/self-evolve` | Create or modify skills by analyzing existing patterns |
+| `/heartbeat` | Manually trigger the proactive heartbeat agent |
 
 ### Content Ingestion
 ```bash
@@ -148,3 +149,110 @@ python3 ~/pureMind/tools/ingest.py document.pdf --title "Title" --category resea
 python3 ~/pureMind/tools/ingest.py --from-stdin --title "Title" --source-url https://example.com
 ```
 Supports PDF (pdfplumber/PyMuPDF), markdown, text. Adds YAML frontmatter with provenance. Auto-indexes.
+
+## Heartbeat & Proactive Agent (Phase 6)
+
+Proactive agent running on a 30-minute systemd timer during waking hours (07:00-22:30 UTC). Four-step loop: Gather -> Reason (Claude CLI) -> Act (within permissions) -> Notify (Telegram).
+
+### Proactivity Levels
+
+| Level | Can Do | Start |
+|---|---|---|
+| **observer** | Read all, log observations. Telegram summary automatic. | Default |
+| **adviser** | Observer + create email drafts, update pending | After stable observer |
+| **partner** | Adviser + comment on PRs/issues, create issues | After 2+ weeks stable |
+
+Level configured in `.claude/integrations/heartbeat_config.json`. Override per-run with `--level`.
+
+### Usage
+```bash
+python3 ~/pureMind/tools/heartbeat.py                   # Normal run
+python3 ~/pureMind/tools/heartbeat.py --dry-run          # Preview gathered state
+python3 ~/pureMind/tools/heartbeat.py --level adviser    # Override level
+python3 ~/pureMind/tools/heartbeat.py --force            # Run outside waking hours
+```
+
+### Integration JSON Output (J-01)
+All integrations support `--json` flag for structured output:
+```bash
+python3 ~/pureMind/.claude/integrations/gmail_integration.py list_unread --account hal --json
+python3 ~/pureMind/.claude/integrations/calendar_integration.py list_events --days 1 --json
+python3 ~/pureMind/.claude/integrations/github_integration.py list_prs PureClaw --state open --json
+python3 ~/pureMind/.claude/integrations/telegram_integration.py read_channel --json
+```
+
+### Components
+- `tools/heartbeat.py` -- main orchestrator (gather/reason/act/notify loop)
+- `.claude/integrations/heartbeat_config.json` -- repos, accounts, thresholds, proactivity level
+- `puremind-heartbeat.timer` + `.service` -- systemd timer (every 30 min, 07:00-22:30 UTC)
+- `daily-logs/heartbeat-log.jsonl` -- structured heartbeat result log
+
+## Knowledge Graph & Advanced Retrieval (Phase 7)
+
+Entity-relationship graph over vault content, stored in PostgreSQL JSONB adjacency lists. Enables relationship-aware retrieval, HyDE for vague queries, and hierarchical summaries.
+
+### Entity Graph
+```bash
+python3 ~/pureMind/tools/extract.py                    # Incremental extraction
+python3 ~/pureMind/tools/extract.py --full              # Full re-extraction
+python3 ~/pureMind/tools/extract.py --file <path>       # Single file
+```
+
+Entity types: person, project, technology, concept, decision, event.
+Relationship types: mentions, depends_on, part_of, works_on, uses, decided, created_by.
+
+### Graph-Augmented Search
+```bash
+python3 ~/pureMind/tools/search.py "query" --graph      # Traverse entity graph + hybrid
+python3 ~/pureMind/tools/search.py "query" --hyde        # Hypothetical document embeddings
+python3 ~/pureMind/tools/search.py "query" --lang simple # Non-English FTS (unaccent)
+```
+
+### Hierarchical Summaries
+```bash
+python3 ~/pureMind/tools/summarize.py --file <path>     # File-level summary
+python3 ~/pureMind/tools/summarize.py --project <name>  # Project-level summary
+python3 ~/pureMind/tools/summarize.py --period START END # Date range summary
+python3 ~/pureMind/tools/summarize.py --build-all       # Full summary tree
+```
+
+### Schema
+- `pm_entities` -- entities with types, descriptions, source chunk references
+- `pm_relationships` -- directed edges with types, weights, evidence chunks
+- `pm_summaries` -- hierarchical summaries (file/project/period/vault) with embeddings
+- `migrations/003_knowledge_graph.sql` -- schema definition
+
+### Components
+- `tools/extract.py` -- entity extraction via Claude CLI (single-turn)
+- `tools/summarize.py` -- RAPTOR-style hierarchical summaries
+- `tools/search.py` -- graph_search(), hyde_search(), --lang support added
+- `tools/db.py` -- shared DB connection (Phase 7 H-02 refactor)
+- Daily reflection auto-extracts entities from today's log
+
+## Security Hardening (Phase 8)
+
+Credentials, content sanitization, audit hardening, and injection testing. Full details in `SECURITY.md`.
+
+### Credential Management
+Secrets resolved via `tools/credentials.py`: env var > `~/.config/puremind/secrets.env` (0600) > hardcoded fallback (deprecated). Never hardcode credentials in Git-tracked files.
+
+### Content Sanitization
+All external content passes through `tools/sanitize.py` before entering Claude prompts. Four layers: control char removal, injection pattern stripping, fence escaping, size enforcement. Applied in extract.py, summarize.py, heartbeat.py, ingest.py.
+
+### Audit Trail
+Every integration call logged to `pm_audit`. JSONL fallback at `~/.cache/puremind/audit_fallback.jsonl` when DB unavailable. Rate limiter in `$XDG_RUNTIME_DIR/puremind_rate/` (0700).
+
+### Testing
+```bash
+python3 -m pytest tests/test_sanitize.py -v    # Fast (22 tests, <1s)
+python3 -m pytest tests/test_injection.py -v   # Integration (Claude CLI)
+```
+
+### Components
+- `tools/credentials.py` -- secret resolution (env > file > fallback)
+- `tools/sanitize.py` -- content sanitization pipeline
+- `tests/payloads.json` -- 8-category attack payload library
+- `tests/test_sanitize.py` -- fast sanitization unit tests
+- `tests/test_injection.py` -- Claude CLI integration tests
+- `requirements.txt` -- pinned dependency versions
+- `SECURITY.md` -- threat model, quarterly review checklist

@@ -1,6 +1,10 @@
 ---
 name: github
 description: List repos, PRs, issues and post comments via the pureMind GitHub integration
+inputs: [repo, state, number, body]
+outputs: [pr_list, issue_list, comment_id]
+writes_to: []
+side_effects: [github_comment, github_issue, audit_log]
 ---
 
 # GitHub Integration

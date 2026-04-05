@@ -1,6 +1,10 @@
 ---
 name: self-evolve
 description: Create or modify pureMind skills by analyzing patterns and composing existing tools
+inputs: [capability_request]
+outputs: [skill_file]
+writes_to: [.claude/skills/, templates/]
+side_effects: [daily_log_entry]
 ---
 
 # Self-Evolve
@@ -111,44 +115,57 @@ Note in the daily log that a new skill was created, with rationale:
   1. Draft the Python code
   2. Present it to the operator for review
   3. Only create the file after explicit approval
+- Call raw shell commands (ssh, kubectl, curl, wget) directly in skills. Skills must compose existing pureMind tools only
+- Create skills that invoke integration Python functions directly (e.g., importing `_call_gmail`). All integration access must go through the CLI wrappers
 
 **MUST do:**
 - Follow the established skill pattern (YAML frontmatter, steps, constraints)
-- Only reference existing CLI tools and integrations
+- Only compose these verified building blocks:
+  - `tools/search.py`, `tools/index.py`, `tools/ingest.py` (vault tools)
+  - `.claude/integrations/*_integration.py` (CLI interface only)
+  - `.claude/hooks/daily_reflect.py` (reflection)
+  - Claude Code built-in tools (WebSearch, WebFetch, Read, Write, Glob, Grep)
+  - Templates in `templates/`
 - Test the new skill after creation by running it once
 - Log the creation in the daily log
 
 ## Examples
 
-### Creating a /cluster-status skill
-```bash
-cat > ~/pureMind/.claude/skills/cluster-status.md << 'SKILL'
+### Creating a /meeting-prep skill
+
+Use Claude Code's Write tool to create the file directly (not heredoc):
+
+Target path: `~/pureMind/.claude/skills/meeting-prep.md`
+
+Content to write:
+```markdown
 ---
-name: cluster-status
-description: Quick overview of fleet node status and key services
+name: meeting-prep
+description: Prepare a briefing for an upcoming meeting using calendar and vault context
 ---
 
-# Cluster Status
+# Meeting Prep
 
-Check fleet health by querying key endpoints and node status.
+Prepare context and talking points for an upcoming meeting.
 
 ## Steps
 
-1. **Check node status:**
-\```bash
-ssh mon1 "uptime && ceph -s --format json-pretty | head -20"
-\```
+1. **Find the meeting:**
+python3 ~/pureMind/.claude/integrations/calendar_integration.py list_events --days 3 --account ops
 
-2. **Check key services:**
-\```bash
-kubectl get pods -A --field-selector=status.phase!=Running 2>/dev/null || echo "K8s not accessible"
-\```
+2. **Search vault for meeting context:**
+python3 ~/pureMind/tools/search.py "<attendee or topic>" --limit 5
+
+3. **Check recent activity:**
+python3 ~/pureMind/tools/search.py "<topic>" --file-filter daily-logs/ --limit 3
+
+4. **Synthesize** a briefing note with: attendees, agenda, relevant vault context, talking points.
 
 ## Constraints
 
-- Read-only. No fleet actions (those go through Immune system).
-SKILL
+- Read-only. Does not modify any files or create calendar events.
+- All calendar and search operations are logged to pm_audit.
 ```
 
 ### Modifying an existing skill
-Read the current version first, then edit the specific section that needs changing.
+Read the current version first, then edit the specific section that needs changing. Use Claude Code's Edit tool, not heredocs.

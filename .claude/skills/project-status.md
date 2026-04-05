@@ -1,6 +1,10 @@
 ---
 name: project-status
 description: Generate a project status report from vault, daily logs, and GitHub
+inputs: [project_name]
+outputs: [status_report]
+writes_to: []
+side_effects: [vault_search, github_reads, audit_log]
 ---
 
 # Project Status
@@ -44,8 +48,8 @@ Filter for items related to the project.
 ## Current Phase
 <phase and status from project README>
 
-## Recent Activity (last 7 days)
-- <key actions from daily logs>
+## Recent Activity
+- <key actions from daily logs (search returns most relevant, not date-bounded)>
 
 ## Open PRs
 - <PR list or "None">
@@ -67,8 +71,13 @@ Filter for items related to the project.
 | puremind | second-brain | This vault |
 | pureclaw | PureClaw | Agentic AI platform |
 | immune-system | macrophage | Self-healing fleet agent |
+| synapse | synapse | Observability/monitoring |
+| sentinel | sentinel | mon3 health agent |
+
+For projects not in this table (e.g., bretalon, bookengine), skip GitHub steps and rely on vault + daily log search only.
 
 ## Constraints
 
 - Read-only. This skill does not modify any files.
 - All GitHub and search operations are logged to pm_audit.
+- Daily log search returns relevance-ranked results, not date-bounded. Recent entries score higher naturally.

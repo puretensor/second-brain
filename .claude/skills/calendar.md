@@ -1,6 +1,10 @@
 ---
 name: calendar
 description: List and search Google Calendar events (read-only) via the pureMind Calendar integration
+inputs: [days, account, query]
+outputs: [event_list]
+writes_to: []
+side_effects: [audit_log]
 ---
 
 # Calendar Integration (Read-Only)

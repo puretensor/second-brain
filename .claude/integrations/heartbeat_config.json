@@ -1,0 +1,16 @@
+{
+  "proactivity_level": "observer",
+  "schedule": {
+    "waking_hours_utc": [7, 23]
+  },
+  "watch": {
+    "github_repos": ["PureClaw", "second-brain", "tensor-scripts", "macrophage"],
+    "email_accounts": ["hal"],
+    "calendar_accounts": ["ops"]
+  },
+  "thresholds": {
+    "stale_pr_days": 3,
+    "overdue_pending_days": 7,
+    "unread_email_alert": 20
+  }
+}

@@ -17,17 +17,16 @@ import sys
 import time
 from pathlib import Path
 
+# H-02: ensure parent dir is on path so `from tools.x` works when invoked directly
+_PARENT = str(Path(__file__).resolve().parent.parent)
+if _PARENT not in sys.path:
+    sys.path.insert(0, _PARENT)
+
 import psycopg2
 
-# Add tools dir to path for local imports
-TOOLS_DIR = Path(__file__).parent
-sys.path.insert(0, str(TOOLS_DIR))
-
-from chunker import chunk_markdown
-from embed import embed_documents, embedding_to_pgvector
-
-# Database connection
-DB_DSN = "postgresql://raguser:REDACTED_DB_PASSWORD@100.103.248.9:30433/vantage"
+from tools.chunker import chunk_markdown
+from tools.db import get_conn
+from tools.embed import embed_documents, embedding_to_pgvector
 
 # Vault root
 VAULT_ROOT = Path.home() / "pureMind"
@@ -117,10 +116,8 @@ def main():
     if verbose:
         print(f"Found {len(files)} indexable files in vault")
 
-    try:
-        conn = psycopg2.connect(DB_DSN)
-    except psycopg2.OperationalError as e:
-        print(f"ERROR: Cannot connect to database (fox-n1:30433/vantage): {e}", file=sys.stderr)
+    conn = get_conn()
+    if conn is None:
         sys.exit(1)
     conn.autocommit = False
 

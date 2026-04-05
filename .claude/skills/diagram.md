@@ -1,6 +1,10 @@
 ---
 name: diagram
 description: Generate Mermaid or Excalidraw diagrams from natural language descriptions
+inputs: [diagram_description, diagram_type]
+outputs: [diagram_file_path]
+writes_to: [knowledge/diagrams/]
+side_effects: [vault_search]
 ---
 
 # Diagram
@@ -29,19 +33,17 @@ python3 ~/pureMind/tools/search.py "<topic>" --limit 3
    - Descriptive edge labels
    - Keep diagrams readable: max ~15 nodes per diagram, split complex systems into sub-diagrams
 
-4. **Save the diagram:**
-```bash
-# Save to knowledge/diagrams/ with description header
-cat > ~/pureMind/knowledge/diagrams/<descriptive-name>.md << 'EOF'
-# <Diagram Title>
+4. **Save the diagram** using Claude Code's Write tool (not heredoc, to avoid nested fence issues):
+   - Path: `~/pureMind/knowledge/diagrams/<descriptive-name>.md`
+   - Content format:
+     ```
+     # <Diagram Title>
 
-<One-line description of what this diagram shows>
+     <One-line description>
 
-```mermaid
-<diagram syntax>
-```
-EOF
-```
+     (Mermaid code block with diagram syntax)
+     ```
+   - The `knowledge/diagrams/` directory is pre-created in the vault.
 
 ## Excalidraw (Secondary)
 

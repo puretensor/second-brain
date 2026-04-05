@@ -16,20 +16,32 @@ Five planes, one LLM. Claude Code is the reasoning layer across all of them.
 | **Interaction** | Search, Q&A, writing, meeting prep | Claude Code CLI as primary interface | 1 (live), 5 |
 | **Action** | Agent workflows, tool execution, memory write-back | Claude Code skills + hooks, Agent SDK for cron | 2, 5, 6 |
 
-### What is live now (Phases 1-5)
+### What is live now (Phases 1-8)
 - Git-backed Obsidian-compatible vault with core identity files (soul.md, user.md, memory.md)
 - Auto-commit hook, SessionStart/PreCompact/SessionEnd hooks, daily reflection cron (23:00 UTC)
 - Hybrid RAG search (BM25 + pgvector semantic with RRF fusion) over all vault content
+- Graph-augmented search: entity traversal via recursive CTE, fused with hybrid results
+- HyDE search: hypothetical document embeddings for vague queries
+- Multilingual FTS: unaccent extension for non-English content
 - Auto-indexing on file changes via PostToolUse hook
+- Entity extraction from vault files via Claude CLI, stored in PostgreSQL knowledge graph
+- Hierarchical summaries: RAPTOR-style tree (file -> project -> vault) with embeddings
 - Permission-enforced integrations: Gmail (read+draft), GitHub (read+comment), Calendar (read), Telegram (alerts)
 - Audit logging: every integration call tracked in pm_audit table with latency, params, result
-- 14 skills: briefing, search, gmail, github, calendar, alerts, draft-email, reflect, project-status, diagram, write, research, ingest, self-evolve
+- 15 skills: briefing, search, gmail, github, calendar, alerts, draft-email, reflect, project-status, diagram, write, research, ingest, self-evolve, heartbeat
 - Content ingestion tool: PDF, markdown, text, URL ingestion with provenance frontmatter
 - Self-evolving skill creation: pureMind creates its own new skills by analyzing existing patterns
+- Proactive heartbeat agent: 30-minute cron gathers state from all integrations, reasons via Claude, acts within permissions, posts Telegram summary
+- Graduated proactivity: observer (report) -> adviser (draft) -> partner (act) -- config-driven trust levels
+- Credential externalization: secrets resolved via env var > file > fallback, never hardcoded in Git
+- Content sanitization pipeline: 4-layer sanitization on all Claude-facing prompts (injection patterns, fence escaping, size limits)
+- Prompt injection test suite: 8-category attack payloads with 22 fast tests + Claude CLI integration tests
+- Audit hardening: JSONL fallback when DB unavailable, per-user rate limiter (0700), connect_timeout
+- Dependency pinning: all Python packages pinned to exact versions
+- PDF resource limits: 120s timeout, 200-page cap
 
-### What is planned (Phases 6-9)
-- Proactive heartbeat agent (Phase 6)
-- Knowledge graph, security hardening, eval framework (Phases 7-9)
+### What is planned (Phase 9)
+- Evaluation framework, ops maturity (Phase 9)
 
 ## Core Stack
 
@@ -95,9 +107,9 @@ pureMind/
 | 3 | Memory Search & Hybrid RAG | 7-12 | Complete |
 | 4 | Direct Integrations | 13-18 | Complete |
 | 5 | Skills Framework | 19-24 | Complete |
-| 6 | Heartbeat & Proactive Agent | 25-30 | Planned |
-| 7 | Knowledge Graph & Advanced Retrieval | 31-40 | Planned |
-| 8 | Security Hardening | 41-48 | Planned |
+| 6 | Heartbeat & Proactive Agent | 25-30 | Complete |
+| 7 | Knowledge Graph & Advanced Retrieval | 31-40 | Complete |
+| 8 | Security Hardening | 41-48 | Complete |
 | 9 | Evaluation & Ops Maturity | 49-56 | Planned |
 
 ## License

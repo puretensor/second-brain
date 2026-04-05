@@ -552,18 +552,37 @@ def main():
     log_result(target_date, stats, summary)
     git_commit(f"reflect: {target_date} -- {summary[:60]}")
 
-    # Trigger incremental re-index (non-blocking)
+    # I-01: Re-index synchronously so chunk IDs are fresh before entity extraction
     index_script = PUREMIND_ROOT / "tools" / "index.py"
     if index_script.exists():
         try:
-            subprocess.Popen(
+            subprocess.run(
                 [sys.executable, str(index_script), "--quiet"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=120,
             )
-        except Exception:
-            pass
+        except (subprocess.TimeoutExpired, Exception) as e:
+            print(f"  Reindex failed: {e}", file=sys.stderr)
 
-    print(f"Reflection complete for {target_date}: +{stats['added']} -{stats['removed']} pending:{stats['pending_updated']} archived:{archived}")
+    # Extract entities from today's log for the knowledge graph (Phase 7)
+    # I-01: runs after synchronous reindex so _find_chunk_ids() sees current data
+    entity_count = 0
+    try:
+        sys.path.insert(0, str(PUREMIND_ROOT))
+        from tools.extract import extract_from_file
+        from tools.db import get_write_conn
+        import hashlib
+
+        conn = get_write_conn()
+        if conn and log_path.exists():
+            fhash = hashlib.sha256(log_path.read_bytes()).hexdigest()
+            e, r = extract_from_file(conn, log_path, fhash, verbose=False)
+            entity_count = e
+            conn.close()
+    except Exception as ex:
+        print(f"  Entity extraction skipped: {ex}", file=sys.stderr)
+
+    print(f"Reflection complete for {target_date}: +{stats['added']} -{stats['removed']} "
+          f"pending:{stats['pending_updated']} archived:{archived} entities:{entity_count}")
 
 
 if __name__ == "__main__":

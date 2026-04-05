@@ -1,6 +1,10 @@
 ---
 name: briefing
 description: Morning briefing combining calendar, email, pending items, and GitHub activity
+inputs: []
+outputs: [briefing_text]
+writes_to: []
+side_effects: [integration_reads, vault_search, audit_log]
 ---
 
 # Morning Briefing

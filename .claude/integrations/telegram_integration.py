@@ -18,27 +18,19 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 sys.path.insert(0, str(Path(__file__).parent))
+_VAULT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _VAULT_ROOT not in sys.path:
+    sys.path.insert(0, _VAULT_ROOT)
+
 from base import audited, deny
+from tools.credentials import get_telegram_config
 
 INTEGRATION = "telegram"
 
-# PureTensor alert bot -- already deployed on mon2
-BOT_TOKEN = ""
-ALERTS_CHAT_ID = ""
-
-# Load from environment first
-BOT_TOKEN = os.environ.get("PUREMIND_TG_BOT_TOKEN", BOT_TOKEN)
-ALERTS_CHAT_ID = os.environ.get("PUREMIND_TG_CHAT_ID", ALERTS_CHAT_ID)
-
-# Config file fallback
-_CONFIG_FILE = Path.home() / "pureMind" / ".claude" / "integrations" / "telegram_config.json"
-if _CONFIG_FILE.exists():
-    try:
-        _cfg = json.loads(_CONFIG_FILE.read_text())
-        BOT_TOKEN = _cfg.get("bot_token", BOT_TOKEN) or BOT_TOKEN
-        ALERTS_CHAT_ID = str(_cfg.get("chat_id", ALERTS_CHAT_ID) or ALERTS_CHAT_ID)
-    except Exception:
-        pass
+# Credentials resolved via tools.credentials (env > secrets.env > fallback)
+_tg_cfg = get_telegram_config()
+BOT_TOKEN = _tg_cfg["bot_token"]
+ALERTS_CHAT_ID = _tg_cfg["chat_id"]
 
 BLOCKED_OPS = {"send_dm", "post_other"}
 API_BASE = "https://api.telegram.org/bot"
@@ -124,6 +116,8 @@ def main():
     ])
     parser.add_argument("message", nargs="?", default="")
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--json", action="store_true",
+                        help="Output as JSON (J-01)")
 
     args = parser.parse_args()
 
@@ -137,7 +131,23 @@ def main():
             print(post_alert(message=args.message))
 
         elif args.command == "read_channel":
-            print(read_channel(limit=args.limit))
+            # D-02 fix: route --json through audited path then reformat
+            text_result = read_channel(limit=args.limit)
+            if args.json:
+                # Re-fetch via audited read_channel, then format as JSON
+                # read_channel already filters to ALERTS_CHAT_ID
+                result = _tg_api("getUpdates", {"limit": min(args.limit * 2, 50), "timeout": 1})
+                updates = result.get("result", [])
+                msgs = []
+                for u in updates:
+                    msg = u.get("message") or u.get("channel_post", {})
+                    chat_id = str(msg.get("chat", {}).get("id", ""))
+                    if chat_id != str(ALERTS_CHAT_ID):
+                        continue
+                    msgs.append({"text": msg.get("text", ""), "date": msg.get("date", 0)})
+                print(json.dumps({"messages": msgs[-args.limit:]}))
+            else:
+                print(text_result)
 
     except PermissionError as e:
         print(str(e), file=sys.stderr)

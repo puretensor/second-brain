@@ -1,6 +1,10 @@
 ---
 name: gmail
 description: Search inbox, read emails, and create drafts via the pureMind Gmail integration
+inputs: [query, account, message_id]
+outputs: [messages, draft_id]
+writes_to: []
+side_effects: [gmail_draft_creation, audit_log]
 ---
 
 # Gmail Integration
@@ -34,7 +38,7 @@ python3 ~/pureMind/.claude/integrations/gmail_integration.py create_draft --to u
 
 ## Constraints
 
-- **No sending.** Drafts only. User must approve via Gmail or /approve before sending.
+- **No sending.** Drafts only. User reviews and sends from Gmail directly.
 - **No reply/trash/delete/spam/filters.** Read and draft operations only.
 - **Accounts:** hal (default), ops, personal only. Other accounts blocked.
 - All operations are logged to the pm_audit table.

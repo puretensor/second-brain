@@ -13,6 +13,7 @@ Fixes applied from Codex Phase 4 review:
 
 import inspect
 import json
+import os
 import sys
 import time
 from functools import wraps
@@ -20,7 +21,12 @@ from pathlib import Path
 
 import psycopg2
 
-DB_DSN = "postgresql://raguser:REDACTED_DB_PASSWORD@100.103.248.9:30433/vantage"
+# Credentials resolved via tools.credentials (env > secrets.env > fallback)
+_VAULT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _VAULT_ROOT not in sys.path:
+    sys.path.insert(0, _VAULT_ROOT)
+
+from tools.credentials import get_db_dsn
 
 # Per-integration rate limits (calls per minute)
 RATE_LIMITS = {
@@ -44,14 +50,20 @@ _SENSITIVE_KEYS = {"token", "password", "secret", "key", "authorization", "cooki
 # Content keys to truncate aggressively (bodies, messages, etc.)
 _CONTENT_KEYS = {"body", "message", "text", "content", "subject", "description", "raw"}
 
-# File-based rate limiter state (persists across CLI invocations, clears on reboot)
-_RATE_DIR = Path("/tmp/puremind_rate")
+# File-based rate limiter state (per-user, mode 0700)
+# Prefer XDG_RUNTIME_DIR (tmpfs, per-user), fall back to ~/.cache/
+_RATE_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "")) / "puremind_rate" \
+    if os.environ.get("XDG_RUNTIME_DIR") \
+    else Path.home() / ".cache" / "puremind_rate"
+
+# JSONL fallback for audit logging when DB is unavailable
+_AUDIT_FALLBACK = Path.home() / ".cache" / "puremind" / "audit_fallback.jsonl"
 
 
 def _get_db():
     """Get a database connection for audit logging."""
     try:
-        conn = psycopg2.connect(DB_DSN)
+        conn = psycopg2.connect(get_db_dsn(), connect_timeout=5)
         conn.autocommit = True
         return conn
     except psycopg2.OperationalError as e:
@@ -86,7 +98,8 @@ def rate_check(integration: str) -> bool:
     so limits survive CLI process boundaries.
     """
     limit = RATE_LIMITS.get(integration, 60)
-    _RATE_DIR.mkdir(exist_ok=True)
+    _RATE_DIR.mkdir(parents=True, exist_ok=True)
+    _RATE_DIR.chmod(0o700)
     rate_file = _RATE_DIR / f"{integration}.log"
     now = time.time()
 
@@ -110,14 +123,36 @@ def rate_check(integration: str) -> bool:
     return True
 
 
+def _audit_fallback_write(integration: str, function: str, params: dict,
+                          result: str, detail: str, latency_ms: int):
+    """Write audit entry to JSONL fallback when DB is unavailable."""
+    try:
+        _AUDIT_FALLBACK.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "integration": integration,
+            "function": function,
+            "params": sanitise_params(params),
+            "result": result,
+            "detail": detail[:200] if detail else "",
+            "latency_ms": latency_ms,
+        }
+        with open(_AUDIT_FALLBACK, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        print(f"WARNING: Audit fallback write also failed: {e}", file=sys.stderr)
+
+
 def audit_log(integration: str, function: str, params: dict,
               result: str, detail: str = "", latency_ms: int = 0) -> bool:
-    """Write an audit entry to pm_audit. Returns True if logged successfully.
+    """Write an audit entry to pm_audit. Falls back to JSONL if DB unavailable.
 
     B-01 fix: detail field truncated to 200 chars (no raw result content).
+    Phase 8: JSONL fallback ensures no call goes unlogged.
     """
     conn = _get_db()
     if conn is None:
+        _audit_fallback_write(integration, function, params, result, detail, latency_ms)
         return False
     try:
         safe_detail = detail[:200] if detail else ""
@@ -131,6 +166,7 @@ def audit_log(integration: str, function: str, params: dict,
         return True
     except Exception as e:
         print(f"WARNING: Audit log write failed: {e}", file=sys.stderr)
+        _audit_fallback_write(integration, function, params, result, detail, latency_ms)
         return False
     finally:
         conn.close()

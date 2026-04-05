@@ -119,6 +119,8 @@ def main():
     parser.add_argument("--state", default="open")
     parser.add_argument("--title", default="")
     parser.add_argument("--body", default="")
+    parser.add_argument("--json", action="store_true",
+                        help="Output as JSON (already default for list/get operations)")
 
     args = parser.parse_args()
 

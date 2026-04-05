@@ -1,6 +1,10 @@
 ---
 name: alerts
 description: Post alerts to the pureMind Telegram alerts channel
+inputs: [message]
+outputs: [message_id]
+writes_to: []
+side_effects: [telegram_message, audit_log]
 ---
 
 # pureMind Alerts

@@ -1,6 +1,10 @@
 ---
 name: reflect
 description: Manually trigger the daily reflection/promotion pipeline
+inputs: [date_override]
+outputs: [reflection_summary]
+writes_to: [memory/memory.md, memory/pending.md]
+side_effects: [log_archival, git_commit, incremental_reindex]
 ---
 
 # Reflect
@@ -45,5 +49,7 @@ Show the operator:
 ## Constraints
 
 - The nightly cron runs this automatically at 23:00 UTC. Use `/reflect` for on-demand runs.
-- Always use `--dry-run` first if unsure about the changes.
+- Always use `--dry-run` first if unsure about the changes. Dry-run shows proposed add/remove/pending changes without applying them.
 - memory.md must stay under 5120 bytes. The script enforces this.
+- **Idempotency note:** if `/reflect` runs at 14:00 and the cron fires at 23:00, the cron will re-process the same day's log. The reflection script is additive (promotes new items, resolves pending), so duplicate runs may propose the same promotions twice. Use `--dry-run` at 23:00 to check before the cron if you ran an earlier manual reflection.
+- Show the operator the full dry-run output (proposed memory additions, removals, pending updates) before running without `--dry-run`.

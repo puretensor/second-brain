@@ -1,6 +1,10 @@
 ---
 name: research
 description: Deep research combining vault knowledge and web sources, producing cited Obsidian notes
+inputs: [topic_query]
+outputs: [research_note_path]
+writes_to: [knowledge/research/]
+side_effects: [vault_search, web_search]
 ---
 
 # Research
@@ -32,36 +36,16 @@ Reference focus areas and domain vocabulary to prioritize relevant angles.
    - Every claim must cite either a vault chunk (file path + heading) or a web URL
    - Identify gaps: what did the vault not know that the web revealed?
 
-5. **Save the research note:**
-```bash
-cat > ~/pureMind/knowledge/research/<topic-slug>.md << 'RESEARCH'
----
-title: "<Topic Title>"
-date: YYYY-MM-DD
-query: "<original research query>"
-sources:
-  - <url1>
-  - <url2>
-vault_refs:
-  - <file_path:heading>
----
+5. **Save the research note** using Claude Code's Write tool.
 
-# <Topic Title>
+   Generate the slug using the same pattern as ingest.py: lowercase, strip non-alphanumeric, hyphens for spaces, max 60 chars. Path: `~/pureMind/knowledge/research/<topic-slug>.md`
 
-<Synthesized findings with inline citations [1], [2]>
-
-## Key Findings
-- <finding 1>
-- <finding 2>
-
-## Vault Context
-<What the vault already knew about this topic>
-
-## Sources
-1. <citation with URL or vault path>
-2. <citation>
-RESEARCH
-```
+   Content format (YAML frontmatter + markdown body):
+   - Frontmatter: title, date (YYYY-MM-DD), query, sources (list of URLs), vault_refs (list of file_path:heading)
+   - Body: synthesized prose with `[1]` inline citations, Key Findings section, Vault Context section
+   - Sources section: numbered list matching inline citations
+   - Vault citations: `[N] vault: knowledge/topic/file.md > Heading`
+   - Web citations: `[N] https://example.com/article (accessed YYYY-MM-DD)`
 
 ## Output Format
 
@@ -72,7 +56,7 @@ RESEARCH
 
 ## Constraints
 
-- **Vault first.** Never skip the vault search. The operator's existing knowledge is primary.
-- **Citation discipline.** No uncited claims. Every factual statement references a source.
+- **Vault first.** Never skip the vault search. The operator's existing knowledge is primary. Log the vault search results in step 1 output so the operator can verify it happened.
+- **Citation discipline.** No uncited claims. Every factual statement references a source. Use the exact formats above (vault: path > heading, or URL with access date).
 - Research notes are auto-indexed by the PostToolUse hook after file write.
 - Do not duplicate content already in the vault. Reference existing notes instead.

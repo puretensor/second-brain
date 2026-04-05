@@ -15,6 +15,7 @@ Usage:
 import argparse
 import base64
 import json
+import re
 import subprocess
 import sys
 from email.mime.text import MIMEText
@@ -114,6 +115,16 @@ def create_draft(to: str, subject: str, body: str, account: str = "hal",
 
         service = build("gmail", "v1", credentials=creds, cache_discovery=False)
 
+        # A-01 fix: enforce CC ops@puretensor.ai for hal account
+        if account == "hal":
+            required_cc = "ops@puretensor.ai"
+            if cc:
+                cc_addrs = [a.strip().lower() for a in cc.split(",")]
+                if required_cc not in cc_addrs:
+                    cc = f"{cc}, {required_cc}"
+            else:
+                cc = required_cc
+
         # Build message
         msg = MIMEText(body)
         msg["to"] = to
@@ -145,6 +156,39 @@ def create_draft(to: str, subject: str, body: str, account: str = "hal",
         raise
 
 
+def _parse_gmail_text(text: str) -> dict:
+    """Parse gmail.py text table output into structured JSON.
+
+    J-01: enables --json output for heartbeat consumption.
+    Handles the fixed-width table format: ID(0-18) Date(19-37) From(38-68) Subject(69+)
+    """
+    if "No messages found" in text or not text.strip():
+        return {"count": 0, "messages": []}
+
+    messages = []
+    for line in text.strip().splitlines():
+        # Skip header, separator, footer, and empty lines
+        if line.startswith("ID") or line.startswith("---") or not line.strip():
+            continue
+        if line.strip().startswith("(") or line.strip().startswith("Showing"):
+            continue
+        # Parse fixed-width columns
+        if len(line) >= 40:
+            msg_id = line[0:18].strip()
+            if not msg_id or not re.match(r'^[0-9a-f]+$', msg_id):
+                continue
+            msg = {
+                "id": msg_id,
+                "date": line[19:37].strip(),
+                "from": line[38:68].strip(),
+                "subject": line[69:].strip() if len(line) > 69 else "",
+                "unread": line.rstrip().endswith("*"),
+            }
+            messages.append(msg)
+
+    return {"count": len(messages), "messages": messages}
+
+
 def main():
     parser = argparse.ArgumentParser(description="pureMind Gmail integration")
     parser.add_argument("command", choices=[
@@ -160,6 +204,8 @@ def main():
     parser.add_argument("--subject", default="")
     parser.add_argument("--body", default="")
     parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--json", action="store_true",
+                        help="Output as JSON (J-01)")
 
     args = parser.parse_args()
 
@@ -172,7 +218,8 @@ def main():
             if not args.query:
                 print("ERROR: --query required for search", file=sys.stderr)
                 sys.exit(1)
-            print(search(query=args.query, account=args.account))
+            result = search(query=args.query, account=args.account)
+            print(json.dumps(_parse_gmail_text(result)) if args.json else result)
 
         elif args.command == "get":
             if not args.id:
@@ -181,10 +228,12 @@ def main():
             print(get(message_id=args.id, account=args.account))
 
         elif args.command == "list_inbox":
-            print(list_inbox(account=args.account, limit=args.limit))
+            result = list_inbox(account=args.account, limit=args.limit)
+            print(json.dumps(_parse_gmail_text(result)) if args.json else result)
 
         elif args.command == "list_unread":
-            print(list_unread(account=args.account))
+            result = list_unread(account=args.account)
+            print(json.dumps(_parse_gmail_text(result)) if args.json else result)
 
         elif args.command == "create_draft":
             if not args.to or not args.subject:
