@@ -16,13 +16,16 @@ Five planes, one LLM. Claude Code is the reasoning layer across all of them.
 | **Interaction** | Search, Q&A, writing, meeting prep | Claude Code CLI as primary interface | 1 (live), 5 |
 | **Action** | Agent workflows, tool execution, memory write-back | Claude Code skills + hooks, Agent SDK for cron | 2, 5, 6 |
 
-### What is live now (Phase 1)
+### What is live now (Phases 1-2)
 - Git-backed Obsidian-compatible vault with core identity files (soul.md, user.md, memory.md)
 - Knowledge, project, and template files seeded from existing operational memory
 - Auto-commit hook on file writes within the vault
+- SessionStart hook loads pureMind identity stack (with legacy fallback)
+- PreCompact hook captures context to daily logs before compression
+- SessionEnd hook marks session boundaries and commits daily logs
+- Daily reflection cron (23:00 UTC) promotes high-signal items from logs to memory.md
 
-### What is planned (Phases 2-9)
-- Session lifecycle hooks and daily reflection cron (Phase 2)
+### What is planned (Phases 3-9)
 - Hybrid RAG with pgvector + sentence-transformers on Ray Trinity (Phase 3)
 - Service integrations with permission model (Phase 4)
 - Skill library and proactive heartbeat agent (Phases 5-6)
@@ -88,7 +91,7 @@ pureMind/
 | # | Phase | Days | Status |
 |---|-------|------|--------|
 | 1 | Memory Foundation | 1-3 | Complete |
-| 2 | Context Persistence & Hooks | 4-6 | Planned |
+| 2 | Context Persistence & Hooks | 4-6 | Complete |
 | 3 | Memory Search & Hybrid RAG | 7-12 | Planned |
 | 4 | Direct Integrations | 13-18 | Planned |
 | 5 | Skills Framework | 19-24 | Planned |

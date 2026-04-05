@@ -26,5 +26,9 @@ Thumbs.db
 *.swo
 .hot-reload
 
+# Python cache
+__pycache__/
+*.pyc
+
 # Node modules (if any plugins use them)
 node_modules/

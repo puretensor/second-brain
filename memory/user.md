@@ -38,7 +38,7 @@ Use these terms correctly. Misuse is a red line.
 
 - **PureClaw/Nexus** -- Agentic AI across Telegram, Discord, email. K3s on fox-n1. Production.
 - **Immune System** -- Self-healing autonomous fleet services. immune_core on TC. Active.
-- **pureMind** -- Second brain (this vault). Phase 1 complete, Phase 2 next.
+- **pureMind** -- Second brain (this vault). Phase 2 complete, Phase 3 next.
 - **Synapse** -- Set-theoretic ML network intelligence. FastAPI :8900, Neo4j + Redis. Active.
 - **Sentinel (mon3)** -- Gemma 4 on Pi 5, hourly health reports. Phase 1 live.
 - **Bretalon** -- AI-focused news publication. WordPress + Imagen 4 pipeline.

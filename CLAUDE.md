@@ -21,7 +21,7 @@ This vault is a Git repository. Everything committed becomes permanent history. 
 
 ## Daily Log Schema
 
-Each file in `daily-logs/` is named `YYYY-MM-DD.md`. Logs are structured capture appended throughout the day. Phase 2 hooks will write to these automatically.
+Each file in `daily-logs/` is named `YYYY-MM-DD.md`. Logs are structured capture appended throughout the day. Phase 2 hooks write to these automatically.
 
 ```markdown
 # YYYY-MM-DD
@@ -42,4 +42,20 @@ Each file in `daily-logs/` is named `YYYY-MM-DD.md`. Logs are structured capture
 - [ ] <action item carried forward>
 ```
 
-Multiple sessions per day append new `## Session:` blocks. The reflection cron (Phase 2) reads these to extract candidates for promotion to memory.md.
+Multiple sessions per day append new `## Session:` blocks. Session boundaries are marked by `---` separators (written by SessionEnd hook).
+
+## Lifecycle Hooks (Phase 2)
+
+All hooks live at `~/tensor-scripts/hooks/` and are registered in `~/.claude/settings.json`.
+
+### SessionStart (`cc_session_start.py`)
+Loads identity stack into context. Source resolution: pureMind vault first (`~/pureMind/memory/soul.md`, `user.md`, `memory.md`), legacy `~/.claude/` fallback. Also loads `pending.md` (20-line cap) and `hal_digest.md` (from Nexus).
+
+### PreCompact (`cc_pre_compact.py`)
+Fires before context compression. Appends `### Compaction Extract` to today's daily log (pureMind primary). Optional Nemotron fact extraction. Git commits the daily log. Injects recovery context (soul.md + recent activity + TOOLS.md) for post-compact continuity.
+
+### SessionEnd (`cc_session_end.py`)
+Runs in background on exit. Appends `---` session boundary to daily log. Git commits. Logs metadata to `~/.claude/session_log.jsonl`.
+
+### Daily Reflection (`daily_reflect.py`)
+Systemd timer at 23:00 UTC (`puremind-reflect.timer`). Uses Claude CLI (`claude -p`) to analyze today's daily log against current memory.md. Promotes durable knowledge to RAM, resolves pending items, archives logs >30 days old. Dry-run: `python3 ~/pureMind/.claude/hooks/daily_reflect.py --dry-run`.
