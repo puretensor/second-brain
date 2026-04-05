@@ -11,7 +11,7 @@
 
 ## Credential Management
 
-Secrets are resolved in order: environment variable > `~/.config/puremind/secrets.env` > hardcoded fallback (deprecated, prints warning).
+Secrets are resolved in order: environment variable > `~/.config/puremind/secrets.env` > fail closed (RuntimeError). No hardcoded fallback.
 
 | Secret | Env Var | Used By |
 |---|---|---|
@@ -27,9 +27,9 @@ Secrets are resolved in order: environment variable > `~/.config/puremind/secret
 
 All external content passes through `tools/sanitize.py` before entering Claude prompts. Four layers:
 
-1. **Control char removal** -- null bytes, ASCII control chars (except `\n`, `\r`, `\t`)
-2. **Injection pattern stripping** -- instruction overrides, role injection, token markers, prompt leaking
-3. **Fence escaping** -- `<document>`, `<system>`, `<instructions>` tags neutralized; `javascript:` and `data:` URIs blocked
+1. **Control char removal + Unicode normalization** -- null bytes, ASCII control chars, NFKC normalization (fullwidth -> ASCII), zero-width/format character stripping (RTL override, ZWS, ZWNJ, WJ)
+2. **Injection pattern stripping** -- instruction overrides (narrowed to avoid false positives), role injection, token markers, prompt leaking
+3. **Fence escaping** -- `<document>`, `<system>`, `<instructions>` tags neutralized (case-insensitive, with attribute handling); `javascript:` and `data:` URIs blocked
 4. **Size enforcement** -- hard truncation with marker
 
 ### Where sanitization is applied
@@ -39,11 +39,11 @@ All external content passes through `tools/sanitize.py` before entering Claude p
 | `tools/extract.py` | Document content before entity extraction prompt |
 | `tools/summarize.py` | Document content before summary prompt |
 | `tools/heartbeat.py` | All gathered integration state before reasoning prompt |
-| `tools/ingest.py` | Ingested content before writing to vault |
+| `tools/ingest.py` | Raw content stored with `untrusted_source: true`; sanitization at prompt egress only |
 
 ### What clean content looks like
 
-Normal markdown, code, and prose passes through unchanged. The sanitizer is tuned to catch injection patterns while preserving legitimate document content.
+Normal markdown, code, and prose passes through with minimal change. NFKC normalization may convert fullwidth Unicode characters to ASCII equivalents. The sanitizer is tuned to catch injection patterns while preserving legitimate document content.
 
 ## Permission Model
 
@@ -84,7 +84,7 @@ Tests 8 attack categories from `tests/payloads.json`:
 cd ~/pureMind && python3 -m pytest tests/test_injection.py -v --timeout=300
 ```
 
-Feeds sanitized attack payloads through the actual entity extraction pipeline and verifies Claude does not follow injected instructions.
+Feeds raw (unsanitized) attack payloads through the actual entity extraction pipeline -- `call_claude_extract()` handles sanitization internally. Verifies Claude does not follow injected instructions.
 
 **Success metric:** 0% attacker success (all extraction outputs contain only valid entity types and names).
 

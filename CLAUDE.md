@@ -234,7 +234,7 @@ python3 ~/pureMind/tools/summarize.py --build-all       # Full summary tree
 Credentials, content sanitization, audit hardening, and injection testing. Full details in `SECURITY.md`.
 
 ### Credential Management
-Secrets resolved via `tools/credentials.py`: env var > `~/.config/puremind/secrets.env` (0600) > hardcoded fallback (deprecated). Never hardcode credentials in Git-tracked files.
+Secrets resolved via `tools/credentials.py`: env var > `~/.config/puremind/secrets.env` (0600) > fail closed (RuntimeError). Never hardcode credentials in Git-tracked files.
 
 ### Content Sanitization
 All external content passes through `tools/sanitize.py` before entering Claude prompts. Four layers: control char removal, injection pattern stripping, fence escaping, size enforcement. Applied in extract.py, summarize.py, heartbeat.py, ingest.py.

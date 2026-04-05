@@ -11,6 +11,7 @@ Fixes applied from Codex Phase 4 review:
 - I-01: @audited captures positional args via inspect.signature
 """
 
+import fcntl
 import inspect
 import json
 import os
@@ -92,42 +93,58 @@ def sanitise_params(params: dict) -> dict:
 
 
 def rate_check(integration: str) -> bool:
-    """File-based rate limiter. Persists across process invocations.
+    """File-based rate limiter with flock for atomicity.
 
-    C-01 fix: timestamps written to /tmp/puremind_rate/<integration>.log
-    so limits survive CLI process boundaries.
+    E-01: Uses exclusive flock around the full read-prune-write cycle to prevent
+    concurrent processes from bypassing the limit. The lock file is the rate file
+    itself, held for the duration of the check.
     """
     limit = RATE_LIMITS.get(integration, 60)
-    _RATE_DIR.mkdir(parents=True, exist_ok=True)
-    _RATE_DIR.chmod(0o700)
+    _RATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     rate_file = _RATE_DIR / f"{integration}.log"
     now = time.time()
 
-    timestamps = []
-    if rate_file.exists():
-        try:
-            lines = rate_file.read_text().strip().split("\n")
-            timestamps = [float(t) for t in lines if t]
-        except (ValueError, OSError):
-            timestamps = []
+    # Open (or create) the rate file and hold an exclusive lock for the full cycle
+    fd = os.open(str(rate_file), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        with os.fdopen(os.dup(fd), "r") as rf:
+            content = rf.read().strip()
 
-    # Prune entries older than 60s
-    timestamps = [t for t in timestamps if now - t < 60]
+        timestamps = []
+        if content:
+            try:
+                timestamps = [float(t) for t in content.split("\n") if t]
+            except ValueError:
+                timestamps = []
 
-    if len(timestamps) >= limit:
-        rate_file.write_text("\n".join(str(t) for t in timestamps) + "\n")
-        return False
+        # Prune entries older than 60s
+        timestamps = [t for t in timestamps if now - t < 60]
 
-    timestamps.append(now)
-    rate_file.write_text("\n".join(str(t) for t in timestamps) + "\n")
-    return True
+        if len(timestamps) >= limit:
+            # Over limit -- rewrite pruned state and deny
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.ftruncate(fd, 0)
+            os.write(fd, ("\n".join(str(t) for t in timestamps) + "\n").encode())
+            return False
+
+        timestamps.append(now)
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.ftruncate(fd, 0)
+        os.write(fd, ("\n".join(str(t) for t in timestamps) + "\n").encode())
+        return True
+    finally:
+        os.close(fd)  # releases flock
 
 
 def _audit_fallback_write(integration: str, function: str, params: dict,
                           result: str, detail: str, latency_ms: int):
-    """Write audit entry to JSONL fallback when DB is unavailable."""
+    """Write audit entry to JSONL fallback when DB is unavailable.
+
+    D-01: Uses flock for concurrent writers, sets file mode 0600.
+    """
     try:
-        _AUDIT_FALLBACK.parent.mkdir(parents=True, exist_ok=True)
+        _AUDIT_FALLBACK.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         entry = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "integration": integration,
@@ -137,8 +154,13 @@ def _audit_fallback_write(integration: str, function: str, params: dict,
             "detail": detail[:200] if detail else "",
             "latency_ms": latency_ms,
         }
-        with open(_AUDIT_FALLBACK, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
+        line = json.dumps(entry) + "\n"
+        fd = os.open(str(_AUDIT_FALLBACK), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            os.write(fd, line.encode())
+        finally:
+            os.close(fd)
     except Exception as e:
         print(f"WARNING: Audit fallback write also failed: {e}", file=sys.stderr)
 
@@ -213,9 +235,13 @@ def audited(integration: str):
             is_write = fname in WRITE_OPS.get(integration, set())
 
             # B-02: pre-check audit DB for write operations
+            # D-01: log blocked write ops to fallback so they're never unlogged
             if is_write:
                 test_conn = _get_db()
                 if test_conn is None:
+                    _audit_fallback_write(
+                        integration, fname, params, "blocked",
+                        "Write blocked: audit DB unavailable", 0)
                     raise RuntimeError(
                         f"Write operation {integration}.{fname}() blocked: "
                         f"audit DB unavailable. Writes require audit logging.")

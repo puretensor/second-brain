@@ -16,7 +16,7 @@ import argparse
 import re
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -145,13 +145,15 @@ def _extract_pdf(filepath: Path) -> str:
     """Extract text from a PDF with timeout and page limit.
 
     B-03 fix: catches malformed PDFs, detects scanned/image-only PDFs.
-    Phase 8: 120s timeout via ThreadPoolExecutor, 200-page cap.
+    H-01: Uses ProcessPoolExecutor so the worker process is killed on timeout
+    (ThreadPoolExecutor cannot interrupt a blocked thread).
     """
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    with ProcessPoolExecutor(max_workers=1) as pool:
         future = pool.submit(_extract_pdf_inner, filepath)
         try:
             return future.result(timeout=PDF_TIMEOUT_SECONDS)
         except FuturesTimeout:
+            # ProcessPoolExecutor kills the worker on pool shutdown
             raise RuntimeError(
                 f"PDF extraction timed out after {PDF_TIMEOUT_SECONDS}s "
                 f"for {filepath.name}. The file may be too large or complex.")
@@ -293,9 +295,10 @@ def ingest(source: str, title: str, from_stdin: bool = False,
         if end != -1:
             stripped = content[end + 3:].lstrip("\n")
 
-    # Sanitize ingested content to strip injection patterns before vault storage
-    # This prevents indirect injection via ingested documents entering RAG context
-    stripped = sanitize_content(stripped, max_chars=MAX_TEXT_BYTES)
+    # F-01: Do NOT sanitize before vault write. Store raw content with
+    # untrusted_source: true in frontmatter. Sanitization happens at Claude
+    # prompt egress (extract.py, summarize.py, heartbeat.py) to avoid
+    # permanently mutating source material.
 
     output = f"{frontmatter}\n\n# {title}\n\n{stripped}"
 

@@ -33,9 +33,9 @@ Five planes, one LLM. Claude Code is the reasoning layer across all of them.
 - Self-evolving skill creation: pureMind creates its own new skills by analyzing existing patterns
 - Proactive heartbeat agent: 30-minute cron gathers state from all integrations, reasons via Claude, acts within permissions, posts Telegram summary
 - Graduated proactivity: observer (report) -> adviser (draft) -> partner (act) -- config-driven trust levels
-- Credential externalization: secrets resolved via env var > file > fallback, never hardcoded in Git
-- Content sanitization pipeline: 4-layer sanitization on all Claude-facing prompts (injection patterns, fence escaping, size limits)
-- Prompt injection test suite: 8-category attack payloads with 22 fast tests + Claude CLI integration tests
+- Credential externalization: secrets resolved via env var > file > fail closed (no hardcoded fallback)
+- Content sanitization pipeline: 4-layer sanitization on all Claude-facing prompts (NFKC + Unicode stripping, narrowed injection patterns, case-insensitive fence escaping, size limits)
+- Prompt injection test suite: 10-category attack payloads with 30 fast tests + Claude CLI integration tests
 - Audit hardening: JSONL fallback when DB unavailable, per-user rate limiter (0700), connect_timeout
 - Dependency pinning: all Python packages pinned to exact versions
 - PDF resource limits: 120s timeout, 200-page cap

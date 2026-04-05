@@ -24,7 +24,7 @@ def get_conn():
     Use for search queries and read-only operations.
     """
     try:
-        conn = psycopg2.connect(get_db_dsn())
+        conn = psycopg2.connect(get_db_dsn(), connect_timeout=5)
         conn.autocommit = True
         return conn
     except psycopg2.OperationalError as e:
@@ -39,7 +39,7 @@ def get_write_conn():
     Caller must conn.commit() or conn.rollback() explicitly.
     """
     try:
-        conn = psycopg2.connect(get_db_dsn())
+        conn = psycopg2.connect(get_db_dsn(), connect_timeout=5)
         conn.autocommit = False
         return conn
     except psycopg2.OperationalError as e:
