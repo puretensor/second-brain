@@ -68,7 +68,7 @@ pureMind/
     user.md          # Auto-evolving owner profile
     memory.md        # Promoted durable knowledge (8K cap)
   daily-logs/
-    YYYY-MM-DD.md    # Raw conversation dumps per day
+    YYYY-MM-DD.md    # Structured session logs per day
   knowledge/
     puretensor/      # Company context, infra docs
     research/        # Papers, technical notes

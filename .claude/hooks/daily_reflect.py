@@ -8,7 +8,7 @@ promotion mechanism.
 
 Usage:
     python3 daily_reflect.py              # Normal run
-    python3 daily_reflect.py --dry-run    # Show proposed changes, don't apply
+    python3 daily_reflect.py --dry-run    # Show proposed changes, don't apply or call Claude
     python3 daily_reflect.py --date 2026-04-04  # Reflect on a specific day
 """
 
@@ -50,19 +50,19 @@ Output a JSON object with exactly these keys:
 
 2. "remove_from_memory": list of strings -- exact lines to REMOVE from memory.md.
    Remove items that are stale, resolved, superseded, or no longer relevant.
+   Match the EXACT text of the line including the leading "- ".
 
-3. "pending_updates": list of objects with keys "action" (add/resolve/update),
-   "item" (the text), and "reason" (why).
+3. "pending_updates": list of objects, each with:
+   - "action": one of "add", "resolve"
+   - "item": for "add", the new item text; for "resolve", the EXACT text of
+     the existing bullet (starting with "- **...") to match against
+   - "reason": brief explanation
 
 4. "summary": one-sentence summary of what changed today.
 
-## Scoring Guidelines
-- Mentioned in 3+ sessions across days = strong promote signal
-- Decisions with rationale = promote
-- Infrastructure changes = promote
-- Resolved pending items = mark done
-- One-off debug details = skip
-- Conversation-specific context = skip
+IMPORTANT: For "resolve" actions, the "item" must be an EXACT prefix match
+of the line in pending.md (e.g., "- **Google Cloud Startups:**" to match
+the full bullet). For "add" actions, use the format "- **Label:** description".
 
 Output ONLY valid JSON. No markdown fencing, no commentary.
 
@@ -100,19 +100,17 @@ def call_claude(prompt: str) -> dict | None:
             timeout=120,
         )
         if result.returncode != 0:
-            print(f"Claude CLI error (rc={result.returncode}): {result.stderr[:200]}", file=sys.stderr)
+            print(f"ERROR: Claude CLI exited {result.returncode}: {result.stderr[:200]}", file=sys.stderr)
             return None
 
         # Parse the outer JSON (Claude CLI wrapper)
         outer = json.loads(result.stdout)
-        # Extract the text content from the response
         text = outer.get("result", "")
         if not text:
-            print("Empty result from Claude CLI", file=sys.stderr)
+            print("ERROR: Empty result from Claude CLI", file=sys.stderr)
             return None
 
-        # Parse the inner JSON (our structured response)
-        # Strip any markdown fencing if Claude adds it despite instructions
+        # Strip markdown fencing if present
         text = text.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[1] if "\n" in text else text[3:]
@@ -120,16 +118,39 @@ def call_claude(prompt: str) -> dict | None:
                 text = text[:-3]
             text = text.strip()
 
-        return json.loads(text)
+        parsed = json.loads(text)
 
+        # Validate expected schema
+        if not isinstance(parsed, dict):
+            print("ERROR: Claude returned non-dict JSON", file=sys.stderr)
+            return None
+        for key in ("add_to_memory", "remove_from_memory", "pending_updates", "summary"):
+            if key not in parsed:
+                print(f"WARNING: Missing key '{key}' in Claude response, defaulting", file=sys.stderr)
+                if key == "summary":
+                    parsed[key] = "No summary provided"
+                else:
+                    parsed[key] = []
+        if not isinstance(parsed["add_to_memory"], list):
+            parsed["add_to_memory"] = []
+        if not isinstance(parsed["remove_from_memory"], list):
+            parsed["remove_from_memory"] = []
+        if not isinstance(parsed["pending_updates"], list):
+            parsed["pending_updates"] = []
+
+        return parsed
+
+    except FileNotFoundError:
+        print("ERROR: Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code", file=sys.stderr)
+        return None
     except subprocess.TimeoutExpired:
-        print("Claude CLI timed out after 120s", file=sys.stderr)
+        print("ERROR: Claude CLI timed out after 120s", file=sys.stderr)
         return None
     except json.JSONDecodeError as e:
-        print(f"Failed to parse Claude response as JSON: {e}", file=sys.stderr)
+        print(f"ERROR: Failed to parse Claude response as JSON: {e}", file=sys.stderr)
         return None
     except Exception as e:
-        print(f"Claude CLI call failed: {e}", file=sys.stderr)
+        print(f"ERROR: Claude CLI call failed: {e}", file=sys.stderr)
         return None
 
 
@@ -138,12 +159,12 @@ def apply_memory_changes(changes: dict, dry_run: bool = False) -> dict:
     stats = {"added": 0, "removed": 0, "pending_updated": 0}
 
     current = read_file_safe(MEMORY_FILE)
-    if current == "(empty)" or current == "(read error)":
+    if current in ("(empty)", "(read error)"):
         current = ""
 
     lines = current.splitlines()
 
-    # Remove lines
+    # Remove lines (exact match)
     removals = changes.get("remove_from_memory", [])
     if removals:
         new_lines = []
@@ -157,11 +178,20 @@ def apply_memory_changes(changes: dict, dry_run: bool = False) -> dict:
                 new_lines.append(line)
         lines = new_lines
 
-    # Add lines (append before the last section or at end)
+    # Add lines -- append to existing "## Recent Promotions" or create it
     additions = changes.get("add_to_memory", [])
     if additions:
-        lines.append("")
-        lines.append("## Recent Promotions")
+        # Find existing section to avoid duplicating header
+        promo_idx = None
+        for i, line in enumerate(lines):
+            if line.strip() == "## Recent Promotions":
+                promo_idx = i
+                break
+
+        if promo_idx is None:
+            lines.append("")
+            lines.append("## Recent Promotions")
+
         for item in additions:
             bullet = item if item.startswith("- ") else f"- {item}"
             lines.append(bullet)
@@ -171,14 +201,8 @@ def apply_memory_changes(changes: dict, dry_run: bool = False) -> dict:
 
     new_content = "\n".join(lines).strip() + "\n"
 
-    # Enforce cap
-    if len(new_content.encode("utf-8")) > MEMORY_CAP_BYTES:
-        # Trim from "Recent Promotions" section first (oldest promotions)
-        trimmed = enforce_cap(new_content)
-        if dry_run:
-            over = len(new_content.encode("utf-8")) - MEMORY_CAP_BYTES
-            print(f"  CAP: Trimmed ~{over} bytes to stay under {MEMORY_CAP_BYTES}B")
-        new_content = trimmed
+    # Enforce cap -- trim oldest promotions first
+    new_content = enforce_cap(new_content, dry_run)
 
     if not dry_run:
         MEMORY_FILE.write_text(new_content, encoding="utf-8")
@@ -186,72 +210,133 @@ def apply_memory_changes(changes: dict, dry_run: bool = False) -> dict:
     # Update pending.md
     pending_updates = changes.get("pending_updates", [])
     if pending_updates:
-        apply_pending_changes(pending_updates, dry_run)
-        stats["pending_updated"] = len(pending_updates)
+        count = apply_pending_changes(pending_updates, dry_run)
+        stats["pending_updated"] = count
 
     return stats
 
 
-def enforce_cap(content: str) -> str:
-    """Trim content to stay under MEMORY_CAP_BYTES."""
-    encoded = content.encode("utf-8")
-    if len(encoded) <= MEMORY_CAP_BYTES:
+def enforce_cap(content: str, dry_run: bool = False) -> str:
+    """Trim content to stay under MEMORY_CAP_BYTES. Removes oldest promotions first."""
+    if len(content.encode("utf-8")) <= MEMORY_CAP_BYTES:
         return content
 
     lines = content.splitlines()
-    # Remove lines from "Recent Promotions" section (bottom) first
-    while len("\n".join(lines).encode("utf-8")) > MEMORY_CAP_BYTES and lines:
-        # Find last "Recent Promotions" bullet and remove it
-        for i in range(len(lines) - 1, -1, -1):
-            if lines[i].strip().startswith("- ") and i > 0:
-                # Check if we're in the Recent Promotions section
-                for j in range(i, -1, -1):
-                    if "Recent Promotions" in lines[j]:
-                        lines.pop(i)
-                        break
-                else:
-                    # Not in promotions, remove from very end
-                    lines.pop()
-                break
-        else:
-            lines.pop()
 
-    return "\n".join(lines).strip() + "\n"
+    # Find the "## Recent Promotions" section
+    promo_start = None
+    for i, line in enumerate(lines):
+        if line.strip() == "## Recent Promotions":
+            promo_start = i
+            break
+
+    if promo_start is None:
+        # No promotions section -- truncate from end
+        while len("\n".join(lines).encode("utf-8")) > MEMORY_CAP_BYTES and lines:
+            removed = lines.pop()
+            if dry_run:
+                print(f"  CAP-TRIM: {removed.strip()}")
+        return "\n".join(lines).strip() + "\n"
+
+    # Collect promotion bullets (oldest first = right after the header)
+    promo_bullets = []
+    for i in range(promo_start + 1, len(lines)):
+        if lines[i].strip().startswith("- "):
+            promo_bullets.append(i)
+        elif lines[i].strip().startswith("## "):
+            break  # Hit next section
+
+    # Remove oldest promotions (lowest index first) until under cap
+    removed_indices = set()
+    for idx in promo_bullets:
+        if len("\n".join(l for i, l in enumerate(lines) if i not in removed_indices).encode("utf-8")) <= MEMORY_CAP_BYTES:
+            break
+        removed_indices.add(idx)
+        if dry_run:
+            print(f"  CAP-TRIM (oldest): {lines[idx].strip()}")
+
+    result = [l for i, l in enumerate(lines) if i not in removed_indices]
+
+    # If still over cap after removing all promotions, trim from end
+    while len("\n".join(result).encode("utf-8")) > MEMORY_CAP_BYTES and result:
+        removed = result.pop()
+        if dry_run:
+            print(f"  CAP-TRIM (tail): {removed.strip()}")
+
+    return "\n".join(result).strip() + "\n"
 
 
-def apply_pending_changes(updates: list[dict], dry_run: bool = False):
-    """Apply changes to pending.md."""
+def apply_pending_changes(updates: list[dict], dry_run: bool = False) -> int:
+    """Apply changes to pending.md. Returns count of changes applied."""
     current = read_file_safe(PENDING_FILE)
     if current in ("(empty)", "(read error)"):
-        current = "# Pending Items\n\n## Active\n\n## Resolved\n"
+        current = "# Pending Items & Follow-Ups\n\nVolatile time-sensitive items. Review weekly, archive when resolved.\n\n## Active\n\n## Resolved\n"
+
+    count = 0
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     for update in updates:
         action = update.get("action", "")
         item = update.get("item", "")
         reason = update.get("reason", "")
 
-        if dry_run:
-            print(f"  PENDING {action.upper()}: {item} ({reason})")
+        if not item:
             continue
 
         if action == "resolve":
-            # Move from Active to Resolved
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            current = current.replace(
-                f"- [ ] {item}",
-                f"- [x] {item} (resolved {today}: {reason})",
-            )
+            # Find the line that starts with the item text (prefix match)
+            lines = current.splitlines()
+            resolved = False
+            for i, line in enumerate(lines):
+                if line.strip().startswith(item.strip()):
+                    resolved_line = f"{line.strip()} *(resolved {today}: {reason})*"
+                    # Move to Resolved section
+                    lines.pop(i)
+                    # Find ## Resolved and insert after it
+                    for j, l in enumerate(lines):
+                        if l.strip() == "## Resolved":
+                            lines.insert(j + 1, resolved_line)
+                            resolved = True
+                            break
+                    if not resolved:
+                        # No Resolved section, append
+                        lines.append("## Resolved")
+                        lines.append(resolved_line)
+                        resolved = True
+                    break
+
+            if resolved:
+                current = "\n".join(lines)
+                count += 1
+                if dry_run:
+                    print(f"  PENDING RESOLVE: {item} ({reason})")
+            elif dry_run:
+                print(f"  PENDING RESOLVE (no match): {item}")
+
         elif action == "add":
             # Add to Active section
-            active_marker = "## Active"
-            if active_marker in current:
-                current = current.replace(
-                    active_marker,
-                    f"{active_marker}\n- [ ] {item}",
-                )
+            lines = current.splitlines()
+            inserted = False
+            for i, line in enumerate(lines):
+                if line.strip() == "## Active":
+                    # Insert after the ## Active line (and any blank line after it)
+                    insert_at = i + 1
+                    while insert_at < len(lines) and not lines[insert_at].strip():
+                        insert_at += 1
+                    bullet = item if item.startswith("- ") else f"- **{item}**"
+                    lines.insert(insert_at, bullet)
+                    inserted = True
+                    break
+            if inserted:
+                current = "\n".join(lines)
+                count += 1
+                if dry_run:
+                    print(f"  PENDING ADD: {item} ({reason})")
 
-    if not dry_run:
-        PENDING_FILE.write_text(current, encoding="utf-8")
+    if not dry_run and count > 0:
+        PENDING_FILE.write_text(current.strip() + "\n", encoding="utf-8")
+
+    return count
 
 
 def archive_old_logs():
@@ -278,10 +363,13 @@ def archive_old_logs():
 
 
 def git_commit(message: str):
-    """Stage and commit all pureMind changes."""
+    """Stage owned files and commit."""
     try:
+        # Scope to files this script owns -- not git add -A
         subprocess.run(
-            ["git", "-C", str(PUREMIND_ROOT), "add", "-A"],
+            ["git", "-C", str(PUREMIND_ROOT), "add",
+             "memory/memory.md", "memory/pending.md",
+             "daily-logs/reflection-log.jsonl", "knowledge/archive/"],
             capture_output=True, timeout=10,
         )
         diff = subprocess.run(
@@ -294,7 +382,7 @@ def git_commit(message: str):
                 capture_output=True, timeout=10,
             )
     except Exception as e:
-        print(f"Git commit failed: {e}", file=sys.stderr)
+        print(f"ERROR: Git commit failed: {e}", file=sys.stderr)
 
 
 def log_result(date_str: str, stats: dict, summary: str):
@@ -325,7 +413,7 @@ def main():
 
     if not log_path.exists():
         print(f"No daily log for {target_date}. Nothing to reflect on.")
-        return
+        sys.exit(0)
 
     daily_log = read_file_safe(log_path)
     memory_content = read_file_safe(MEMORY_FILE)
@@ -333,6 +421,12 @@ def main():
 
     if dry_run:
         print(f"=== pureMind Reflection (DRY RUN) -- {target_date} ===\n")
+        print("Showing what WOULD happen. No Claude call, no file writes.\n")
+        print(f"Daily log: {len(daily_log)} chars")
+        print(f"Memory: {len(memory_content)} chars ({len(memory_content.encode('utf-8'))} bytes / {MEMORY_CAP_BYTES} cap)")
+        print(f"Pending: {len(pending_content)} chars")
+        print("\nTo run for real, omit --dry-run.")
+        sys.exit(0)
 
     # Build prompt
     prompt = REFLECTION_PROMPT.format(
@@ -342,38 +436,26 @@ def main():
     )
 
     # Call Claude
-    if dry_run:
-        print("Calling Claude CLI for analysis...")
     changes = call_claude(prompt)
 
     if not changes:
-        print("No changes extracted from Claude. Skipping.", file=sys.stderr)
-        log_result(target_date, {"error": "no_response"}, "Claude returned no changes")
-        return
+        print("ERROR: No changes extracted from Claude. Exiting with error.", file=sys.stderr)
+        sys.exit(1)
 
     summary = changes.get("summary", "No summary provided")
-    if dry_run:
-        print(f"\nSummary: {summary}\n")
-        print("Proposed changes:")
 
     # Apply changes
-    stats = apply_memory_changes(changes, dry_run=dry_run)
+    stats = apply_memory_changes(changes, dry_run=False)
 
-    # Archive old logs (not in dry run)
-    archived = 0
-    if not dry_run:
-        archived = archive_old_logs()
-        stats["archived"] = archived
+    # Archive old logs
+    archived = archive_old_logs()
+    stats["archived"] = archived
 
-    if dry_run:
-        print(f"\nStats: {json.dumps(stats, indent=2)}")
-        print(f"Archived logs: {archived} (skipped in dry run)")
-        print("\nNo changes applied (dry run).")
-    else:
-        # Commit all changes
-        git_commit(f"reflect: {target_date} -- {summary[:60]}")
-        log_result(target_date, stats, summary)
-        print(f"Reflection complete for {target_date}: +{stats['added']} -{stats['removed']} pending:{stats['pending_updated']} archived:{archived}")
+    # Commit all changes (including reflection log)
+    log_result(target_date, stats, summary)
+    git_commit(f"reflect: {target_date} -- {summary[:60]}")
+
+    print(f"Reflection complete for {target_date}: +{stats['added']} -{stats['removed']} pending:{stats['pending_updated']} archived:{archived}")
 
 
 if __name__ == "__main__":

@@ -46,10 +46,10 @@ Multiple sessions per day append new `## Session:` blocks. Session boundaries ar
 
 ## Lifecycle Hooks (Phase 2)
 
-All hooks live at `~/tensor-scripts/hooks/` and are registered in `~/.claude/settings.json`.
+Lifecycle hooks are registered in `~/.claude/settings.json`. The three CC event hooks live at `~/tensor-scripts/hooks/`. The daily reflection script lives at `~/pureMind/.claude/hooks/daily_reflect.py` and runs via systemd timer, not CC events.
 
 ### SessionStart (`cc_session_start.py`)
-Loads identity stack into context. Source resolution: pureMind vault first (`~/pureMind/memory/soul.md`, `user.md`, `memory.md`), legacy `~/.claude/` fallback. Also loads `pending.md` (20-line cap) and `hal_digest.md` (from Nexus).
+Loads identity stack into context with per-section byte budgets (identity 1800B, profile 1800B, memory 1800B, pending 400B, daily logs 1800B, Nexus 400B). Source resolution: pureMind vault first (`~/pureMind/memory/soul.md`, `user.md`, `memory.md`), legacy `~/.claude/` fallback. Also loads `pending.md` and `hal_digest.md` (from Nexus, legacy path only).
 
 ### PreCompact (`cc_pre_compact.py`)
 Fires before context compression. Appends `### Compaction Extract` to today's daily log (pureMind primary). Optional Nemotron fact extraction. Git commits the daily log. Injects recovery context (soul.md + recent activity + TOOLS.md) for post-compact continuity.

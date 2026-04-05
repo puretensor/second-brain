@@ -14,7 +14,7 @@ Sovereign second brain built on Claude Code CLI (Max 20x) + Obsidian + pgvector.
 - Knowledge: Obsidian vault (Markdown-native), Git-versioned.
 - Search: pgvector + PostgreSQL FTS hybrid retrieval (Phase 3). Embeddings via sentence-transformers on Ray Trinity.
 - Interaction: Claude Code CLI primary. Obsidian as visual canvas.
-- Cron: Agent SDK for heartbeat (30min) and daily reflection (23:00 UTC) (Phase 2+).
+- Cron: Systemd timer for daily reflection (23:00 UTC, Claude CLI). Heartbeat agent planned (Phase 6).
 
 ## Phases
 
