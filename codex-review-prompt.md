@@ -1,8 +1,8 @@
-# Codex Review: pureMind Phase 4 -- Direct Integrations
+# Codex Review: pureMind Phase 5 -- Skills Framework
 
 ## Your Role
 
-You are a senior systems architect reviewing Phase 4 of **pureMind**, a sovereign second brain project. Your review is constructive and actionable. You do NOT make any changes -- you read, analyze, and produce structured suggestions.
+You are a senior systems architect reviewing Phase 5 of **pureMind**, a sovereign second brain project. Your review is constructive and actionable. You do NOT make any changes -- you read, analyze, and produce structured suggestions.
 
 ## Context
 
@@ -11,149 +11,166 @@ pureMind is a cognitive augmentation system built on:
 - **Obsidian-compatible vault** (Markdown-native, Git-versioned) at `~/pureMind/`
 - **pgvector + PostgreSQL FTS** for hybrid retrieval (Phase 3)
 - **sentence-transformers on CPU** for embeddings (nomic-embed-text-v1.5, 768-dim)
+- **Permission-enforced integrations** (Phase 4): Gmail, GitHub, Calendar, Telegram with audit logging
 - **Ray cluster** (160 CPUs, 2 GPUs, 200 GbE) as compute backbone
 
-Phase 1 (Memory Foundation) created the vault. Phase 2 (Context Persistence & Hooks) wired lifecycle hooks. Phase 3 (Memory Search & Hybrid RAG) added hybrid search. All three were Codex-reviewed with fixes applied.
+Phases 1-4 are complete and Codex-reviewed with fixes applied:
+- Phase 1: Memory Foundation (vault, identity files, Git)
+- Phase 2: Context Persistence & Hooks (session hooks, daily reflection cron)
+- Phase 3: Memory Search & Hybrid RAG (pgvector + BM25, search/index/chunker/embed tools)
+- Phase 4: Direct Integrations (Gmail/GitHub/Calendar/Telegram wrappers, audit logging, rate limiting, permission enforcement)
 
-Phase 4 (Direct Integrations) connects pureMind to external services with a permission-enforced wrapper model. Each integration is a thin Python wrapper that enforces hardcoded read/write permissions, logs every call to an audit table, and rate-limits per integration.
+Phase 5 (Skills Framework) extends the skill library from 6 to 14 skills, adds one new Python tool (`ingest.py`), and delivers the `/self-evolve` meta-skill.
 
-### Phase 4 Deliverables
+### Phase 5 Deliverables
 
-1. **Audit log schema** (`~/pureMind/migrations/002_audit_log.sql`) -- `pm_audit` table in the existing `vantage` database. Columns: id (bigserial), ts (timestamptz), integration (text), function (text), parameters (jsonb), result (text), detail (text), latency_ms (int). Indexes on ts DESC and (integration, ts DESC).
+1. **Writing style template** (`~/pureMind/templates/writing-style.md`) -- Long-form writing conventions: output types with word count targets (blog 1200-1600, report 800-1200, memo 200-500, technical unbounded), voice rules (no em dashes, concise, technical, numbers over narratives).
 
-2. **Base integration module** (`~/pureMind/.claude/integrations/base.py`) -- Shared infrastructure for all wrappers:
-   - `audit_log(integration, function, params, result, detail, latency_ms)` -- writes to pm_audit
-   - `rate_check(integration)` -- in-memory token bucket (gmail:30/min, github:60/min, calendar:30/min, telegram:20/min)
-   - `sanitise_params(params)` -- strips tokens, passwords, large bodies from audit params
-   - `deny(integration, function, params)` -- logs denied op and exits
-   - `@audited(integration)` -- decorator wrapping functions with rate check + audit logging
+2. **8 new skill files** in `~/pureMind/.claude/skills/`:
 
-3. **Gmail integration** (`~/pureMind/.claude/integrations/gmail_integration.py`) -- Wraps `~/.config/puretensor/gmail.py` via subprocess for reads (search, get, list_inbox, list_unread). Uses Google API directly (google-api-python-client) for create_draft with existing OAuth tokens from `~/.config/puretensor/gdrive_tokens/`. Blocks: send, reply, trash, delete, spam, filter operations.
+   | Skill | Type | What It Composes |
+   |---|---|---|
+   | `/draft-email` | Pure markdown | gmail_integration.py + templates/email-style.md |
+   | `/reflect` | Pure markdown | daily_reflect.py (standalone CLI, --dry-run, --date) |
+   | `/project-status` | Pure markdown | search.py + github_integration.py + pending.md |
+   | `/diagram` | Pure markdown | Mermaid generation instructions + save to knowledge/diagrams/ |
+   | `/write` | Pure markdown | templates/writing-style.md + user.md + search.py |
+   | `/research` | Pure markdown | search.py (vault-first) + WebSearch/WebFetch (web) + save to knowledge/research/ |
+   | `/ingest` | Pure markdown + Python tool | tools/ingest.py for file handling, WebFetch for URLs |
+   | `/self-evolve` | Pure markdown meta-skill | Reads existing skills, creates new .md files following patterns |
 
-4. **GitHub integration** (`~/pureMind/.claude/integrations/github_integration.py`) -- Wraps `gh` CLI. All repos scoped to `puretensor` org. Allowed: list_repos, list_prs, get_pr, list_issues, get_issue, comment_pr, comment_issue, create_issue. Blocks: merge, push, close, delete.
+3. **Ingestion tool** (`~/pureMind/tools/ingest.py`, ~200 lines) -- CLI tool for ingesting external content into the vault:
+   - Input: PDF (pdfplumber/PyMuPDF extraction), markdown, text, stdin (piped from WebFetch)
+   - Output: Markdown file in `knowledge/<category>/<slug>.md` with YAML provenance frontmatter
+   - Auto-triggers incremental re-index via index.py
+   - Guards: 1MB text size limit, slug collision handling, no binary storage in vault
 
-5. **Calendar integration** (`~/pureMind/.claude/integrations/calendar_integration.py`) -- Wraps `~/nexus/tools/gcalendar.py` via subprocess. Read-only. Maps `list_events(days)` to gcalendar.py commands (days<=1 -> today, days<=7 -> week, days>7 -> upcoming). Blocks: create, update, delete.
+4. **Documentation updates** -- CLAUDE.md (Phase 5 skills section with all 14 skills), README.md (Phase 5 status), project README.
 
-6. **Telegram alerts** (`~/pureMind/.claude/integrations/telegram_integration.py`) -- Direct Bot API calls (urllib) to `@puretensor_alert_bot`. Allowed: post_alert (prefixes "[pureMind]"), read_channel. Blocks: DMs, other channels. Config from `telegram_config.json` or env vars.
+### Existing Infrastructure (from Phases 1-4)
 
-7. **Claude Code skills** (`~/pureMind/.claude/skills/`) -- 5 skill files: `gmail.md`, `github.md`, `calendar.md`, `alerts.md`, `briefing.md`. Each documents allowed operations and CLI invocations for its integration.
+**Skills pattern:** Markdown files in `.claude/skills/` with YAML frontmatter (`name`, `description`), bash code blocks for CLI invocations, and a Constraints section. Auto-discovered by Claude Code.
 
-8. **PRD recovery** (`~/pureMind/projects/puremind/prd-v2.md`, `PT-2026-SB-v2.pdf`) -- Full PRD transcribed to markdown and PDF copy saved to vault. Also uploaded to Google Drive. Closes Phase 1 issue I-01.
+**Tools (Python CLIs in `tools/`):**
+- `search.py` -- hybrid RAG (BM25 + pgvector, RRF fusion k=60). CLI: `python3 search.py "<query>" --limit 5 --json --file-filter prefix`
+- `index.py` -- full/incremental vault indexing (SHA-256 change detection). Glob: `knowledge/**/*.md`, `projects/**/*.md`, `daily-logs/*.md`, etc.
+- `chunker.py` -- heading-aware markdown chunker (2048-char max, 20% overlap, fence-aware)
+- `embed.py` -- nomic-embed-text-v1.5 embeddings via sentence-transformers
 
-9. **Documentation updates** -- CLAUDE.md (integration section with permission model table, usage examples, skills list, components), README.md (Phase 4 status, expanded "What is live now"), project README (Phase 4 complete), daily log entry.
+**Integration wrappers (`.claude/integrations/`):**
+- `base.py` -- @audited decorator (inspect.signature for arg capture), file-based rate limiter (/tmp/puremind_rate/), audit logging to pm_audit, deny() raises PermissionError, write ops fail closed
+- `gmail_integration.py` -- search, get, list_inbox, list_unread, create_draft. Account allowlist (hal, ops, personal). Blocks send/reply/trash/delete/spam/filters.
+- `github_integration.py` -- list_repos (limit 100), list_prs, get_pr, list_issues, get_issue, comment_pr, comment_issue, create_issue. Blocks merge/push/close/delete.
+- `calendar_integration.py` -- list_events (days mapping: 1->today, >1->upcoming --limit), get_event, search_events. Blocks create/update/delete.
+- `telegram_integration.py` -- post_alert (chat_id enforced at API layer), read_channel (filtered to alerts chat). Blocks DMs/other chats.
 
-### Database Environment
+**Daily reflection** (`daily_reflect.py`):
+- Systemd timer at 23:00 UTC
+- Invokes `claude -p --output-format json --max-turns 1`
+- Parses JSON: add_to_memory, remove_from_memory, pending_updates, summary
+- Enforces memory.md 5120-byte cap
+- RAG context from search.py before reflection
+- Archives logs >30 days, commits, re-indexes
 
-- **Host:** fox-n1 (K3s), accessible at 100.103.248.9:30433 (NodePort)
-- **Database:** `vantage` (shared with Alexandria/Nexus + pureMind Phase 3)
-- **User:** `raguser` / `REDACTED_DB_PASSWORD`
-- **Existing tables:** `puremind_chunks` (Phase 3), `facts`, `rag_documents`, `rag_chunks` (Nexus/Alexandria)
-- **New table:** `pm_audit` (this phase)
+**Templates:**
+- `templates/email-style.md` -- Email voice (warm, concise, match sender tone, CC ops@, plain text, draft-first)
+- `templates/briefing-note.md` -- Briefing format (attention items first, numbers > narratives)
+- `templates/writing-style.md` -- Long-form writing (NEW in Phase 5)
 
-### Permission Model (from PRD p8)
+### PRD Success Metric (p16)
 
-| Integration | Read | Write | Blocked |
-|---|---|---|---|
-| Gmail | search, get, list_inbox, list_unread | create_draft only | send, reply, trash, delete, spam, filters |
-| GitHub | list_repos, list_prs, list_issues, get_pr, get_issue | comment_pr, comment_issue, create_issue | merge, push, close, delete |
-| Calendar | list_events, get_event, search_events | None | create, update, delete |
-| Telegram | read_channel | post_alert (alerts channel only) | DMs, other channels |
+> "6+ skills operational. /briefing produces useful output. /self-evolve creates a working new skill."
 
-### Existing Tools Wrapped
-
-- `~/.config/puretensor/gmail.py` -- full multi-account Gmail CLI (OAuth2, SMTP fallback, labels, filters). Tokens in `~/.config/puretensor/gdrive_tokens/`.
-- `~/nexus/tools/gcalendar.py` -- Google Calendar CLI (list, create, search, get). Positional args: `{personal,ops,all} {today,week,upcoming,search,get,...}`.
-- `gh` CLI -- GitHub CLI, already installed and authenticated for `puretensor` org.
-- Telegram Bot API -- `@puretensor_alert_bot` (token `8546123559:...`), direct HTTPS calls.
+Current state: 14 skills operational. /briefing tested and working. /self-evolve instructions and guard rails in place.
 
 ## What to Review
 
-### 1. Read the full integration codebase
+### 1. Read the full Phase 5 codebase
 
-Read every file in `~/pureMind/.claude/integrations/` and `~/pureMind/.claude/skills/`. Also read `~/pureMind/migrations/002_audit_log.sql` and the integration section in `~/pureMind/CLAUDE.md`. Understand the data flow: CLI invocation -> permission check -> subprocess/API call -> audit log -> formatted output.
+Read every file in `~/pureMind/.claude/skills/`, `~/pureMind/tools/ingest.py`, and `~/pureMind/templates/writing-style.md`. Also read the Phase 5 sections in `~/pureMind/CLAUDE.md` and `~/pureMind/README.md`. Understand how skills compose the existing tools and integrations.
 
 ### 2. Evaluate against these criteria
 
-**A. Permission Model Enforcement**
-- Are all blocked operations actually unreachable? Could a caller bypass the `BLOCKED_OPS` check by calling the underlying function directly (e.g., importing `_call_gmail` and passing "send")?
-- Is the `deny()` function's `sys.exit(1)` appropriate? What if the integration is called as a library (imported) rather than CLI? Does the exit propagate correctly?
-- Are there any operations that should be blocked but aren't in the current lists? Compare against the PRD permission table.
-- Could command injection occur through any of the subprocess calls? (e.g., crafted message body in `comment_pr`, crafted query in `gmail search`)
-- Is the hardcoded permission model (Python constants) the right pattern vs. a config file? What are the trade-offs for Phase 8 (Security Hardening)?
+**A. Skill Quality & Completeness**
+- Do the skill instructions actually work? For each skill, trace the bash commands: do the CLI paths exist, are the flags correct, do the tools accept those arguments?
+- Are there any skills that promise capabilities the underlying tools don't support? (e.g., does `/research` reference WebSearch/WebFetch correctly? Does `/reflect` use the right flags for daily_reflect.py?)
+- Is the `/draft-email` skill correctly enforcing the CC ops@puretensor.ai rule, or does it just mention it in prose?
+- Does `/project-status` correctly map project names to GitHub repo names? Is the mapping table accurate?
+- Are the skill instructions clear enough that Claude Code can follow them without ambiguity, or are there vague steps that could produce inconsistent results?
+- Is there unnecessary duplication between skills? Do any skills overlap in a way that creates confusion?
 
-**B. Audit Logging (base.py + 002_audit_log.sql)**
-- Is the `@audited` decorator correctly capturing function arguments? Does it handle *args and **kwargs properly?
-- What happens if the audit DB is unreachable? Does the wrapper fail open (proceed without logging) or fail closed (block the operation)?
-- Is the `sanitise_params()` function stripping all sensitive values? What about OAuth tokens that might appear in error messages or tracebacks?
-- Is `bigserial` appropriate for the audit table? At the current call volume (~50/day), will it hit limits?
-- Is `latency_ms` as `int` correct? Should it be `float` for sub-millisecond precision, or is integer millisecond sufficient?
-- Should the audit table have a retention/rotation policy? It will grow indefinitely.
-- Is the `parameters jsonb` column indexed? Should it be, for searching audit entries?
-- Does the `detail` column truncation (if any) lose important diagnostic information?
+**B. Ingestion Tool (ingest.py)**
+- Is the PDF extraction robust? What happens with scanned PDFs (image-only, no text layer)? Does pdfplumber handle this, or does it silently return empty text?
+- Is the slug generation safe? What about titles with only non-ASCII characters (e.g., Icelandic "Sjovarpakkning")? Does the regex strip everything, producing "untitled"?
+- Is the `--from-stdin` mode correctly handling piped content? What if the pipe is empty or the content is binary?
+- Is the 1MB size guard checked at the right point? (After extraction but before file write?)
+- Is the frontmatter generation correct YAML? What if the title contains quotes, colons, or other YAML-special characters?
+- Does the collision handling (-2, -3 suffix) have a bounded loop, or could it spin indefinitely?
+- Is the incremental re-index trigger correct? Does it call index.py with the right arguments? Could it create a race condition with the PostToolUse hook's own index trigger?
+- Is `_read_source()` handling file encodings correctly? What about UTF-16 or Latin-1 encoded files?
+- Error handling: are all failure modes (file not found, permission denied, PDF parse failure, disk full) caught with useful messages?
+- Is there any path traversal risk in the `--category` argument? Could `--category ../../.ssh` write outside the knowledge directory?
 
-**C. Rate Limiting (base.py)**
-- The token bucket is in-memory and resets on process exit. Since each CLI invocation is a new process, does the rate limiter actually work? Or does it only limit within a single long-running import?
-- If the rate limiter doesn't persist across process invocations, is it effectively useless for CLI usage?
-- Are the rate limits (gmail:30/min, github:60/min, calendar:30/min, telegram:20/min) aligned with the upstream API limits?
-- What happens when a rate limit is hit? Is the error message clear? Does it audit the denial?
+**C. Self-Evolve Skill (self-evolve.md)**
+- Are the guard rails sufficient? Could Claude Code be convinced by a user to create a skill that bypasses the permission model (e.g., a skill that calls `_call_gmail('hal', 'send', ...)` directly)?
+- Is the "CANNOT create new Python tools autonomously" rule enforceable? The skill says to draft code for review, but Claude Code could just write the file anyway.
+- Does the skill provide enough pattern context for Claude Code to create consistent, high-quality skills, or would the output be unpredictable?
+- Is the example in the skill (creating a `/cluster-status` skill) syntactically valid and would it work if executed?
+- Should /self-evolve log to the audit table (pm_audit) when a new skill is created? Currently it only logs to the daily log.
 
-**D. Gmail Integration (gmail_integration.py)**
-- The wrapper calls gmail.py via subprocess for reads but uses Google API directly for create_draft. Is this mixed approach clean, or should it be consistent?
-- Does the `create_draft` function correctly load OAuth tokens from the filesystem? What if the token is expired and needs refresh?
-- Is the account mapping correct? Does `hal` map to the right token file?
-- Could the `--query` argument to gmail.py be exploited for command injection? (subprocess with list args should be safe, but verify)
-- Is the subprocess timeout (30s) appropriate for gmail operations (search can be slow on large mailboxes)?
-- Error handling: if gmail.py returns a non-zero exit code, is the error message from stderr useful?
+**D. Research Skill (research.md)**
+- The vault-first protocol says "always search vault before web." Is this enforceable, or just advisory? Could Claude Code skip the vault search?
+- Is the citation format well-defined enough for consistent output? The skill shows numbered references but doesn't specify how to format vault citations vs web citations.
+- The skill saves to `knowledge/research/<topic-slug>.md`. Who generates the slug -- Claude Code or a tool? Is there a risk of inconsistent naming?
+- Is the YAML frontmatter template in the skill syntactically correct? Would Claude Code produce valid YAML from it?
+- Could web research introduce prompt injection content into the vault? (External web pages could contain instruction-like text that gets saved and later retrieved via RAG.)
 
-**E. GitHub Integration (github_integration.py)**
-- The wrapper calls `gh` CLI with `--json` for structured output and `json.loads()` for parsing. What if `gh` returns non-JSON output (e.g., authentication errors, rate limit messages)?
-- Is the `puretensor` org prefix hardcoded correctly everywhere? What if a repo name contains special characters?
-- For `comment_pr` and `comment_issue`, is the `--body` argument shell-safe? (`subprocess.run` with list args should handle this, but verify)
-- Is `create_issue` correctly creating issues in the right repo? Is there validation on the repo name?
-- What happens if `gh` is not installed or not authenticated? Is the error message clear?
-- The `--json` field list for `list_prs` and `list_issues` -- are all requested fields available in the current `gh` version?
+**E. Template Quality (writing-style.md)**
+- Are the word count targets realistic and consistent with how Claude Code generates content?
+- Does the template cover enough voice rules to produce consistent output, or is it too vague?
+- Is the "no em dashes" rule from CLAUDE.md correctly replicated here?
+- For Bretalon blog posts, the template says "the operator must approve before publishing." Is this just prose, or is there a mechanism?
+- Should the template reference the PureTensor branded PDF template for report output?
 
-**F. Calendar Integration (calendar_integration.py)**
-- The `list_events(days)` function maps days to gcalendar.py commands: days<=1 -> today, days<=7 -> week, days>7 -> upcoming. Is this mapping correct? What about days=2 or days=3 (falls into "week" which shows the full week, not just 2-3 days)?
-- Does the `search` command pass the query correctly via `-q`? Could special characters in the query break the subprocess call?
-- The gcalendar.py `get` command uses `--id` flag. Is the event_id format validated or sanitised?
-- What if gcalendar.py's OAuth token expires? Does it auto-refresh (it does, but verify the wrapper handles the refresh output)?
+**F. Reflect Skill (reflect.md)**
+- The skill says to run `daily_reflect.py` directly. What happens if the user runs `/reflect` at 14:00 and then the cron fires at 23:00 -- does the cron re-process the same day, potentially overwriting the manual reflection's changes?
+- Does `--dry-run` show enough information for the operator to evaluate the proposed changes?
+- What happens if daily_reflect.py is run for a date that has no daily log?
+- Is there a risk of memory.md exceeding the 5120-byte cap if /reflect is run multiple times in one day?
 
-**G. Telegram Integration (telegram_integration.py)**
-- The bot token is stored in a JSON config file in the repo. Is this acceptable for a Git-tracked vault? (telegram_config.json is in the integrations directory which is committed)
-- The `post_alert` function uses `parse_mode: "Markdown"`. Does this create issues if the message contains Markdown special characters (*, _, `, [)?
-- `read_channel` uses `getUpdates` which only returns messages sent TO the bot, not channel history. Is this limitation documented? Does the skill/briefing account for this?
-- Is the `urlopen` timeout (10s) appropriate? What about network interruptions?
-- The config loading tries env vars, then config file. Is the precedence correct? What if both are set with different values?
+**G. Diagram Skill (diagram.md)**
+- Does the skill handle the `knowledge/diagrams/` directory creation? What if it doesn't exist yet?
+- Is the heredoc pattern in the skill correct? The fenced code block inside a heredoc could cause shell parsing issues.
+- Does the skill give enough guidance for Claude Code to produce correct Mermaid syntax, or is it too open-ended?
+- Should diagrams reference a color scheme from a template file?
 
-**H. Skills (*.md files)**
-- Do the skill files accurately document only the allowed operations? Is there any mismatch between what the skill says and what the wrapper permits?
-- Is the `/briefing` skill's sequence of calls (calendar, email, pending, GitHub, memory search) the right order? Could any call block or timeout and prevent later calls?
-- Are the CLI examples in skills syntactically correct and tested? Would copy-pasting them work?
-- Is there a skill for checking audit logs? (e.g., "show me recent integration activity")
+**H. Code Quality & Patterns**
+- Does ingest.py follow the same patterns as the existing tools (search.py, index.py)? Or does it introduce inconsistencies?
+- Are all paths in skill files absolute (`~/pureMind/...`), or are some relative? Relative paths could break if the working directory changes.
+- Is the skill YAML frontmatter consistent across all 14 skills? Do all have `name` and `description`?
+- Are there any unused imports or dead code in ingest.py?
+- Is the skill documentation in CLAUDE.md consistent with the actual skill files?
 
-**I. Code Quality & Security**
-- Are all subprocess calls using list args (not `shell=True`)? This is critical for command injection prevention.
-- Is the error handling consistent across all 4 integrations? Do they all raise RuntimeError, or is there a mix of exceptions?
-- Are there any imports that could fail at runtime (google-api-python-client, psycopg2) without clear error messages?
-- Is the `sys.path.insert(0, ...)` pattern for importing base.py clean? Could it shadow system modules?
-- Are there any hardcoded paths that should be relative or configurable?
-- Is there dead code in any of the integration files?
-- Are the CLI argument parsers robust? What about missing required args, unknown args?
+**I. Security Considerations**
+- Could a malicious PDF exploit pdfplumber/PyMuPDF to execute code during ingestion?
+- Could web content ingested via /ingest (piped from WebFetch) contain prompt injection payloads that persist in the vault and activate during later RAG retrieval?
+- Does /self-evolve create a privilege escalation path? A skill created by /self-evolve has the same execution context as any other skill.
+- Are the YAML frontmatter fields in ingested documents sanitized? Could a crafted title or source_url inject YAML that alters the frontmatter parsing?
+- Does the `--category` parameter in ingest.py allow writing outside the knowledge/ directory?
 
-**J. Phase 5 Readiness**
-- Phase 5 is "Skills Framework" -- extending the skill library with more complex multi-step skills. Do the Phase 4 integrations provide the right building blocks?
-- Is the `@audited` decorator reusable for new integrations added in later phases?
-- Is the base module extensible for the cluster monitoring integration (deferred from Phase 4)?
-- Could the briefing skill evolve into an autonomous heartbeat agent (Phase 6) without major refactoring?
-- Are there structural decisions in Phase 4 that create friction for Phase 8 (Security Hardening)?
+**J. Phase 6 Readiness**
+- Phase 6 is "Heartbeat & Proactive Agent" -- a cron-triggered process that gathers state from all integrations, reasons via Claude, acts within permissions, and notifies. Do the Phase 5 skills provide the right building blocks?
+- Is `/briefing` a good starting template for the heartbeat's "gather" phase? What would need to change?
+- Are the skill instructions machine-readable enough for the heartbeat agent to invoke them programmatically, or are they designed only for interactive use?
+- Could the heartbeat agent use `/self-evolve` to create its own skills? Is that desirable or dangerous?
+- The PRD specifies proactivity levels (Observer -> Adviser -> Partner -> Autonomous). Do the Phase 5 skills map cleanly to these levels?
 
 ### 3. Produce structured output
 
 Format your review as follows. This exact format is required -- the operator will copy-paste it into Claude Code for triage and execution.
 
 ```
-## PHASE 4 REVIEW: pureMind Direct Integrations
+## PHASE 5 REVIEW: pureMind Skills Framework
 
 ### Overall Assessment
 [2-3 sentences: overall quality, biggest strength, biggest concern]
@@ -173,22 +190,23 @@ Format your review as follows. This exact format is required -- the operator wil
 ### Structural Observations
 [bullet list of architectural observations -- things that aren't wrong but worth noting for future phases]
 
-### Phase 5 Readiness Score
+### Phase 6 Readiness Score
 [X/10] -- [one sentence justification]
 
-### Missing from Phase 4
-[list anything the PRD specified for Phase 4 that was not delivered]
+### Missing from Phase 5
+[list anything the PRD specified for Phase 5 that was not delivered]
 ```
 
 ## Constraints
 
 - **DO NOT modify any files.** This is a read-only review.
 - **DO NOT create branches, PRs, or issues.** Output is text only.
-- Be specific. "Improve error handling" is not actionable. "The `@audited` decorator at base.py:98 catches `Exception` broadly -- catch `psycopg2.OperationalError` specifically for DB failures and let unexpected exceptions propagate" is.
+- Be specific. "Improve the research skill" is not actionable. "The /research skill at research.md:35 saves to `knowledge/research/<topic-slug>.md` but Claude Code generates the slug ad-hoc with no slugification function -- use ingest.py's `_slugify()` for consistency" is.
 - Reference specific files and line numbers where relevant.
 - Assume the reviewer (the operator) is deeply technical. No need to explain basic concepts.
 - The project is for a real company (PureTensor, Inc.), not a hobby. Treat it accordingly.
-- The Ray cluster (160 CPUs, 2 GPUs, 200 GbE) is the compute backbone for later phases. Note any Phase 4 decisions that help or hinder distributed processing.
-- Credentials are hardcoded in tool scripts (DB_DSN, bot tokens in config). This matches the sovereign infrastructure pattern. Do not flag it as a security issue unless you have a specific bypass/exfiltration scenario.
-- The permission model is intentionally hardcoded in Python (not config files). This is a design decision: permissions are code, not configuration. Flag only if there's a specific vulnerability.
-- The integration wrappers are thin by design. They should NOT replicate the functionality of the tools they wrap. Flag any scope creep.
+- Skills are markdown instructions, not executable code. They guide Claude Code's behavior. Evaluate them as instructions, not programs.
+- The Ray cluster (160 CPUs, 2 GPUs, 200 GbE) is the compute backbone for later phases. Note any Phase 5 decisions that help or hinder distributed processing.
+- The /self-evolve skill is the most architecturally significant deliverable. Give it disproportionate attention.
+- Credentials are hardcoded in tool scripts (DB_DSN). This matches the sovereign infrastructure pattern. Do not flag it as a security issue unless you have a specific attack scenario.
+- The ingestion tool deliberately does NOT fetch URLs itself (Claude Code's WebFetch handles that). This is a design decision, not a gap.
