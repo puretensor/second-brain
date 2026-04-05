@@ -26,8 +26,8 @@
 - Connection: birthday host in Porto where user met Isak and Thorir.
 
 ### Isak Ernir Sveinbjornsson
-- Owner, Foss Car Rental Iceland. isak@fosscarrental.com / isakernir15@gmail.com
-- Phone/WhatsApp: +354 454 0242. Ex-footballer.
+- Owner, Foss Car Rental Iceland. isak@fosscarrental.com
+- Contact details: see ~/.claude/ memory. Ex-footballer.
 
 ### Thorir Oskarsson
 - Chief Actuary, Sjova-Almennar tryggingar hf. LinkedIn: linkedin.com/in/thorir-oskarsson-6143064/

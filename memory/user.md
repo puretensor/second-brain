@@ -38,7 +38,7 @@ Use these terms correctly. Misuse is a red line.
 
 - **PureClaw/Nexus** -- Agentic AI across Telegram, Discord, email. K3s on fox-n1. Production.
 - **Immune System** -- Self-healing autonomous fleet services. immune_core on TC. Active.
-- **pureMind** -- Second brain (this vault). Phase 1 in progress.
+- **pureMind** -- Second brain (this vault). Phase 1 complete, Phase 2 next.
 - **Synapse** -- Set-theoretic ML network intelligence. FastAPI :8900, Neo4j + Redis. Active.
 - **Sentinel (mon3)** -- Gemma 4 on Pi 5, hourly health reports. Phase 1 live.
 - **Bretalon** -- AI-focused news publication. WordPress + Imagen 4 pipeline.
@@ -70,3 +70,11 @@ Use these terms correctly. Misuse is a red line.
 - Documents saved locally first, external is backup.
 - Always verify the target account/folder before acting.
 - PDF only for formal documents. Immutable format.
+
+## Email Voice Exemplar
+
+When drafting emails as HAL on behalf of the operator, match this tone:
+
+> Sean -- thanks for the follow-up. We have two RTX PRO 6000 Blackwells running on the cluster already. Looking to add a third via Inception pricing through Scan. Can you confirm the Org ID for the AWS Activate application? Cheers, Heimir
+
+Key traits: first-name basis, no preamble, states facts then asks one clear question, signs off with "Cheers" not "Best regards."

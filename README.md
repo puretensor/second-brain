@@ -8,20 +8,32 @@ pureMind is a cognitive augmentation system -- not a chatbot wrapper. It capture
 
 Five planes, one LLM. Claude Code is the reasoning layer across all of them.
 
-| Plane | Function | Implementation |
-|-------|----------|----------------|
-| **Capture** | Connectors and inboxes for raw artefacts | Python scripts, file watchers (inotifywait) |
-| **Processing** | Parsing, chunking, embedding, entity extraction | sentence-transformers (CPU), Claude Code for summarisation |
-| **Knowledge** | Raw store + canonical store + indexes + versioning | Obsidian vault, pgvector, PostgreSQL FTS, Git |
-| **Interaction** | Search, Q&A, writing, meeting prep | Claude Code CLI as primary interface |
-| **Action** | Agent workflows, tool execution, memory write-back | Claude Code skills + hooks, Agent SDK for cron |
+| Plane | Function | Implementation | Phase |
+|-------|----------|----------------|-------|
+| **Capture** | Connectors and inboxes for raw artefacts | Python scripts, file watchers (inotifywait) | 2, 4 |
+| **Processing** | Parsing, chunking, embedding, entity extraction | sentence-transformers (CPU), Claude Code for summarisation | 3 |
+| **Knowledge** | Raw store + canonical store + indexes + versioning | Obsidian vault (live), pgvector + PostgreSQL FTS + Git (live) | 1, 3 |
+| **Interaction** | Search, Q&A, writing, meeting prep | Claude Code CLI as primary interface | 1 (live), 5 |
+| **Action** | Agent workflows, tool execution, memory write-back | Claude Code skills + hooks, Agent SDK for cron | 2, 5, 6 |
+
+### What is live now (Phase 1)
+- Git-backed Obsidian-compatible vault with core identity files (soul.md, user.md, memory.md)
+- Knowledge, project, and template files seeded from existing operational memory
+- Auto-commit hook on file writes within the vault
+
+### What is planned (Phases 2-9)
+- Session lifecycle hooks and daily reflection cron (Phase 2)
+- Hybrid RAG with pgvector + sentence-transformers on Ray Trinity (Phase 3)
+- Service integrations with permission model (Phase 4)
+- Skill library and proactive heartbeat agent (Phases 5-6)
+- Knowledge graph, security hardening, eval framework (Phases 7-9)
 
 ## Core Stack
 
 - **Claude Code CLI** (Max 20x subscription) -- single LLM, no routing, no API keys
 - **Obsidian vault** (Markdown-native) -- portable, diffable, Git-versioned
-- **pgvector + PostgreSQL FTS** -- hybrid retrieval with Reciprocal Rank Fusion
-- **sentence-transformers** (CPU) -- all-MiniLM-L6-v2 for embeddings, distributed via Ray
+- **pgvector + PostgreSQL FTS** *(Phase 3)* -- hybrid retrieval with Reciprocal Rank Fusion
+- **sentence-transformers** (CPU) *(Phase 3)* -- all-MiniLM-L6-v2 for embeddings, distributed via Ray
 - **Git** -- every memory write commits with structured message
 
 ## Design Principles

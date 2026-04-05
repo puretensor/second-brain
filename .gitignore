@@ -1,4 +1,4 @@
-# Never commit credentials even if accidentally created
+# Credentials -- never commit
 *credentials*
 *secrets*
 *.env
@@ -11,3 +11,20 @@ Thumbs.db
 # Obsidian workspace state (not content)
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
+.obsidian/plugins/
+.obsidian/core-plugins.json
+.obsidian/hotkeys.json
+.obsidian/community-plugins.json
+
+# Obsidian trash
+.trash/
+
+# Temp and backup files
+*.tmp
+*~
+*.swp
+*.swo
+.hot-reload
+
+# Node modules (if any plugins use them)
+node_modules/

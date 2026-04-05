@@ -12,8 +12,8 @@
 ## UK Entity
 - **PureTensor Ltd.** (Company 16957867, formerly Varangian Group Ltd)
 - Director: Heimir Helgason
-- VAT: 514 7995 57 (effective 12 Jan 2026, HMRC ref 099001194967)
-- HMRC Government Gateway User ID: 909179968761
+- VAT: 514 7995 57 (effective 12 Jan 2026)
+- HMRC credentials: see ~/.claude/ memory (not stored in vault)
 
 ## Document Standards
 - All PDFs use branded template: `~/tensor-scripts/templates/puretensor_doc_template.py`

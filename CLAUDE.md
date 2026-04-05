@@ -18,3 +18,28 @@ This vault is a Git repository. Everything committed becomes permanent history. 
 - **Register:** Live conversation context (ephemeral)
 - **RAM:** memory/memory.md (always loaded, <8K tokens)
 - **Disk:** daily-logs/, knowledge/, projects/ (searchable, not always loaded)
+
+## Daily Log Schema
+
+Each file in `daily-logs/` is named `YYYY-MM-DD.md`. Logs are structured capture appended throughout the day. Phase 2 hooks will write to these automatically.
+
+```markdown
+# YYYY-MM-DD
+
+## Session: <session-id or time>
+**Context:** <what was the user working on>
+
+### Work Done
+- <concrete action taken>
+
+### Decisions
+- <decision made and rationale>
+
+### New Facts
+- <facts learned that may be promoted to memory.md>
+
+### Pending
+- [ ] <action item carried forward>
+```
+
+Multiple sessions per day append new `## Session:` blocks. The reflection cron (Phase 2) reads these to extract candidates for promotion to memory.md.
