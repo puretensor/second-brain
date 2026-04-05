@@ -29,9 +29,18 @@ ORG = "puretensor"
 
 BLOCKED_OPS = {"merge", "push", "close", "delete"}
 
+# A-01 fix: gh subcommands that are never allowed through the wrapper
+_GH_BLOCKED_SUBCOMMANDS = {"merge", "close", "delete", "push"}
+
 
 def _gh(args: list[str]) -> str:
-    """Run a gh CLI command and return stdout."""
+    """Run a gh CLI command and return stdout.
+
+    A-01 fix: validates that no blocked subcommands appear in args.
+    """
+    for blocked in _GH_BLOCKED_SUBCOMMANDS:
+        if blocked in args:
+            deny(INTEGRATION, blocked, {"args": " ".join(args[:5])})
     result = subprocess.run(["gh"] + args, capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
         raise RuntimeError(f"gh error: {result.stderr[:300]}")
@@ -41,7 +50,8 @@ def _gh(args: list[str]) -> str:
 @audited(INTEGRATION)
 def list_repos() -> str:
     """List all repos in the puretensor org."""
-    return _gh(["repo", "list", ORG, "--limit", "50",
+    # E-01 fix: raised limit from 50 to 100 (org has 57+ repos)
+    return _gh(["repo", "list", ORG, "--limit", "100",
                 "--json", "name,visibility,updatedAt,description"])
 
 
@@ -112,46 +122,51 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command in BLOCKED_OPS:
-        deny(INTEGRATION, args.command, {"repo": args.repo})
+    try:
+        if args.command in BLOCKED_OPS:
+            deny(INTEGRATION, args.command, {"repo": args.repo})
 
-    if args.command == "list_repos":
-        print(list_repos())
+        if args.command == "list_repos":
+            print(list_repos())
 
-    elif args.command == "list_prs":
-        if not args.repo:
-            print("ERROR: repo name required", file=sys.stderr); sys.exit(1)
-        print(list_prs(repo=args.repo, state=args.state))
+        elif args.command == "list_prs":
+            if not args.repo:
+                print("ERROR: repo name required", file=sys.stderr); sys.exit(1)
+            print(list_prs(repo=args.repo, state=args.state))
 
-    elif args.command == "get_pr":
-        if not args.repo or not args.number:
-            print("ERROR: repo and PR number required", file=sys.stderr); sys.exit(1)
-        print(get_pr(repo=args.repo, number=args.number))
+        elif args.command == "get_pr":
+            if not args.repo or not args.number:
+                print("ERROR: repo and PR number required", file=sys.stderr); sys.exit(1)
+            print(get_pr(repo=args.repo, number=args.number))
 
-    elif args.command == "list_issues":
-        if not args.repo:
-            print("ERROR: repo name required", file=sys.stderr); sys.exit(1)
-        print(list_issues(repo=args.repo, state=args.state))
+        elif args.command == "list_issues":
+            if not args.repo:
+                print("ERROR: repo name required", file=sys.stderr); sys.exit(1)
+            print(list_issues(repo=args.repo, state=args.state))
 
-    elif args.command == "get_issue":
-        if not args.repo or not args.number:
-            print("ERROR: repo and issue number required", file=sys.stderr); sys.exit(1)
-        print(get_issue(repo=args.repo, number=args.number))
+        elif args.command == "get_issue":
+            if not args.repo or not args.number:
+                print("ERROR: repo and issue number required", file=sys.stderr); sys.exit(1)
+            print(get_issue(repo=args.repo, number=args.number))
 
-    elif args.command == "comment_pr":
-        if not args.repo or not args.number or not args.body:
-            print("ERROR: repo, number, and --body required", file=sys.stderr); sys.exit(1)
-        print(comment_pr(repo=args.repo, number=args.number, body=args.body))
+        elif args.command == "comment_pr":
+            if not args.repo or not args.number or not args.body:
+                print("ERROR: repo, number, and --body required", file=sys.stderr); sys.exit(1)
+            print(comment_pr(repo=args.repo, number=args.number, body=args.body))
 
-    elif args.command == "comment_issue":
-        if not args.repo or not args.number or not args.body:
-            print("ERROR: repo, number, and --body required", file=sys.stderr); sys.exit(1)
-        print(comment_issue(repo=args.repo, number=args.number, body=args.body))
+        elif args.command == "comment_issue":
+            if not args.repo or not args.number or not args.body:
+                print("ERROR: repo, number, and --body required", file=sys.stderr); sys.exit(1)
+            print(comment_issue(repo=args.repo, number=args.number, body=args.body))
 
-    elif args.command == "create_issue":
-        if not args.repo or not args.title:
-            print("ERROR: repo and --title required", file=sys.stderr); sys.exit(1)
-        print(create_issue(repo=args.repo, title=args.title, body=args.body))
+        elif args.command == "create_issue":
+            if not args.repo or not args.title:
+                print("ERROR: repo and --title required", file=sys.stderr); sys.exit(1)
+            print(create_issue(repo=args.repo, title=args.title, body=args.body))
+
+    except PermissionError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

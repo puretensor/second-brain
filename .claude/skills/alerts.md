@@ -5,7 +5,7 @@ description: Post alerts to the pureMind Telegram alerts channel
 
 # pureMind Alerts
 
-Post notifications to the dedicated pureMind Telegram alerts channel.
+Post notifications to the pureMind Telegram alerts endpoint (operator DM via @puretensor_alert_bot).
 
 ## Available Operations
 
@@ -19,6 +19,6 @@ python3 ~/pureMind/.claude/integrations/telegram_integration.py read_channel --l
 
 ## Constraints
 
-- **Alerts channel only.** Cannot DM users or post to other channels.
+- **Configured chat only.** Posts to the operator alerts endpoint (chat_id in telegram_config.json). Cannot message other chats.
 - Messages are prefixed with `[pureMind]` automatically.
 - All operations are logged to the pm_audit table.

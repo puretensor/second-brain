@@ -92,10 +92,12 @@ Permission-enforced wrappers in `.claude/integrations/` over existing tools. Eve
 
 | Integration | Read | Write | Blocked |
 |---|---|---|---|
-| Gmail | search, get, list_inbox, list_unread | create_draft only | send, trash, delete, spam, filters |
+| Gmail | search, get, list_inbox, list_unread | create_draft only | send, reply, trash, delete, spam, filters |
 | GitHub | list_repos, list_prs, list_issues, get_pr, get_issue | comment_pr, comment_issue, create_issue | merge, push, close, delete |
 | Calendar | list_events, get_event, search_events | None (read-only) | create, update, delete |
-| Telegram | read_channel | post_alert (alerts channel only) | DMs, other channels |
+| Telegram | read_channel (filtered to alerts chat) | post_alert (configured chat only) | DMs, other chats |
+
+Gmail accounts restricted to: hal (default), ops, personal. Write ops fail closed if audit DB unavailable.
 
 ### Usage
 ```bash

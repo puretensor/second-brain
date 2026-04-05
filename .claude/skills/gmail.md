@@ -35,5 +35,6 @@ python3 ~/pureMind/.claude/integrations/gmail_integration.py create_draft --to u
 ## Constraints
 
 - **No sending.** Drafts only. User must approve via Gmail or /approve before sending.
-- **No trash/delete/spam.** Read and draft operations only.
+- **No reply/trash/delete/spam/filters.** Read and draft operations only.
+- **Accounts:** hal (default), ops, personal only. Other accounts blocked.
 - All operations are logged to the pm_audit table.

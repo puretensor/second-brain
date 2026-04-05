@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""pureMind Telegram alerts integration -- post to pureMind alerts channel only.
+"""pureMind Telegram alerts integration -- post to operator alerts endpoint only.
 
-Write: post_alert to the dedicated alerts channel. Read: read recent alerts.
-Blocked: DMs, posting to other channels/groups.
+Write: post_alert to the configured alerts chat. Read: read recent bot updates.
+Blocked: DMs to other users, posting to other channels/groups.
 
 Usage:
     python3 telegram_integration.py post_alert "Phase 4 integration test complete"
@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -22,11 +23,10 @@ from base import audited, deny
 INTEGRATION = "telegram"
 
 # PureTensor alert bot -- already deployed on mon2
-BOT_TOKEN = "REDACTED_TELEGRAM_TOKEN"  # Will be set from env or config
-ALERTS_CHAT_ID = ""  # Set after creating the pureMind alerts channel
+BOT_TOKEN = ""
+ALERTS_CHAT_ID = ""
 
-# Try to load from environment or config
-import os
+# Load from environment first
 BOT_TOKEN = os.environ.get("PUREMIND_TG_BOT_TOKEN", BOT_TOKEN)
 ALERTS_CHAT_ID = os.environ.get("PUREMIND_TG_CHAT_ID", ALERTS_CHAT_ID)
 
@@ -35,8 +35,8 @@ _CONFIG_FILE = Path.home() / "pureMind" / ".claude" / "integrations" / "telegram
 if _CONFIG_FILE.exists():
     try:
         _cfg = json.loads(_CONFIG_FILE.read_text())
-        BOT_TOKEN = _cfg.get("bot_token", BOT_TOKEN)
-        ALERTS_CHAT_ID = _cfg.get("chat_id", ALERTS_CHAT_ID)
+        BOT_TOKEN = _cfg.get("bot_token", BOT_TOKEN) or BOT_TOKEN
+        ALERTS_CHAT_ID = str(_cfg.get("chat_id", ALERTS_CHAT_ID) or ALERTS_CHAT_ID)
     except Exception:
         pass
 
@@ -45,7 +45,16 @@ API_BASE = "https://api.telegram.org/bot"
 
 
 def _tg_api(method: str, params: dict) -> dict:
-    """Call the Telegram Bot API."""
+    """Call the Telegram Bot API.
+
+    A-01/G-01 fix: enforces that chat_id in params matches ALERTS_CHAT_ID.
+    Prevents imported code from messaging arbitrary chats.
+    """
+    # G-01: enforce chat_id restriction at the API layer
+    if "chat_id" in params and str(params["chat_id"]) != str(ALERTS_CHAT_ID):
+        deny(INTEGRATION, "send_to_unauthorized_chat",
+             {"target_chat": params["chat_id"], "allowed_chat": ALERTS_CHAT_ID})
+
     url = f"{API_BASE}{BOT_TOKEN}/{method}"
     data = json.dumps(params).encode()
     req = Request(url, data=data, headers={"Content-Type": "application/json"})
@@ -58,16 +67,18 @@ def _tg_api(method: str, params: dict) -> dict:
 
 @audited(INTEGRATION)
 def post_alert(message: str) -> str:
-    """Post a message to the pureMind alerts channel."""
+    """Post a message to the pureMind alerts endpoint."""
     if not ALERTS_CHAT_ID:
         raise RuntimeError(
-            "ALERTS_CHAT_ID not configured. Create the pureMind alerts channel, "
-            "add the bot, then set chat_id in telegram_config.json or PUREMIND_TG_CHAT_ID env var."
-        )
+            "ALERTS_CHAT_ID not configured. Set chat_id in telegram_config.json "
+            "or PUREMIND_TG_CHAT_ID env var.")
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN not configured.")
+
+    # G-02 fix: no parse_mode -- plain text avoids Markdown escaping issues
     result = _tg_api("sendMessage", {
         "chat_id": ALERTS_CHAT_ID,
         "text": f"[pureMind] {message}",
-        "parse_mode": "Markdown",
     })
     if not result.get("ok"):
         raise RuntimeError(f"Telegram send failed: {result.get('description', 'unknown error')}")
@@ -77,25 +88,32 @@ def post_alert(message: str) -> str:
 
 @audited(INTEGRATION)
 def read_channel(limit: int = 10) -> str:
-    """Read recent messages from the alerts channel."""
+    """Read recent bot updates, filtered to alerts chat only.
+
+    G-01 fix: filters getUpdates results to ALERTS_CHAT_ID only.
+    Note: getUpdates returns messages sent TO the bot, not full channel history.
+    """
     if not ALERTS_CHAT_ID:
         raise RuntimeError("ALERTS_CHAT_ID not configured.")
-    # Note: getUpdates only works for bot messages, not channel history.
-    # For channel history, we'd need a userbot or the channel must be a supergroup.
-    # For now, return a note about this limitation.
-    result = _tg_api("getUpdates", {"limit": limit, "timeout": 1})
+    result = _tg_api("getUpdates", {"limit": min(limit * 2, 50), "timeout": 1})
     if not result.get("ok"):
         raise RuntimeError(f"Telegram read failed: {result.get('description')}")
     updates = result.get("result", [])
     if not updates:
         return "No recent updates from bot."
     lines = []
-    for u in updates[-limit:]:
+    for u in updates:
         msg = u.get("message") or u.get("channel_post", {})
+        # G-01: only show messages from/to the configured alerts chat
+        chat_id = str(msg.get("chat", {}).get("id", ""))
+        if chat_id != str(ALERTS_CHAT_ID):
+            continue
         text = msg.get("text", "(no text)")
         date = msg.get("date", 0)
         lines.append(f"[{date}] {text[:200]}")
-    return "\n".join(lines)
+    if not lines:
+        return "No recent alerts in configured chat."
+    return "\n".join(lines[-limit:])
 
 
 def main():
@@ -109,16 +127,21 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command in BLOCKED_OPS:
-        deny(INTEGRATION, args.command, {})
+    try:
+        if args.command in BLOCKED_OPS:
+            deny(INTEGRATION, args.command, {})
 
-    if args.command == "post_alert":
-        if not args.message:
-            print("ERROR: message text required", file=sys.stderr); sys.exit(1)
-        print(post_alert(message=args.message))
+        if args.command == "post_alert":
+            if not args.message:
+                print("ERROR: message text required", file=sys.stderr); sys.exit(1)
+            print(post_alert(message=args.message))
 
-    elif args.command == "read_channel":
-        print(read_channel(limit=args.limit))
+        elif args.command == "read_channel":
+            print(read_channel(limit=args.limit))
+
+    except PermissionError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

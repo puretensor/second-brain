@@ -24,9 +24,11 @@ python3 ~/pureMind/.claude/integrations/gmail_integration.py list_unread --accou
 cat ~/pureMind/memory/pending.md
 ```
 
-4. **GitHub:** Check open PRs across key repos
+4. **GitHub:** Check open PRs across key repos (PureClaw, second-brain, tensor-scripts)
 ```bash
-python3 ~/pureMind/.claude/integrations/github_integration.py list_prs nexus --state open
+python3 ~/pureMind/.claude/integrations/github_integration.py list_prs PureClaw --state open
+python3 ~/pureMind/.claude/integrations/github_integration.py list_prs second-brain --state open
+python3 ~/pureMind/.claude/integrations/github_integration.py list_prs tensor-scripts --state open
 ```
 
 5. **Memory:** Search for any relevant context

@@ -24,12 +24,17 @@ GCALENDAR_PY = Path.home() / "nexus" / "tools" / "gcalendar.py"
 
 BLOCKED_OPS = {"create", "update", "delete"}
 
+# A-01 fix: gcalendar.py commands allowed through the subprocess wrapper
+_ALLOWED_GCAL_COMMANDS = {"today", "week", "upcoming", "search", "get", "calendars"}
+
 
 def _call_gcal(account: str, command: str, extra_args: list[str] = None) -> str:
     """Call gcalendar.py via subprocess and return stdout.
 
-    CLI format: gcalendar.py <account> <command> [options]
+    A-01 fix: validates command against allowlist before subprocess call.
     """
+    if command not in _ALLOWED_GCAL_COMMANDS:
+        deny(INTEGRATION, command, {"account": account})
     cmd = ["python3", str(GCALENDAR_PY), account, command]
     if extra_args:
         cmd.extend(extra_args)
@@ -41,15 +46,17 @@ def _call_gcal(account: str, command: str, extra_args: list[str] = None) -> str:
 
 @audited(INTEGRATION)
 def list_events(days: int = 7, account: str = "ops") -> str:
-    """List upcoming events. Maps days to gcalendar.py commands:
-    days=1 -> today, days<=7 -> week, days>7 -> upcoming --limit 20.
+    """List upcoming events.
+
+    F-01 fix: days=1 -> today, days>1 -> upcoming with scaled limit.
+    No longer maps days=2-7 to "week" (which over-returns).
     """
     if days <= 1:
         return _call_gcal(account, "today")
-    elif days <= 7:
-        return _call_gcal(account, "week")
     else:
-        return _call_gcal(account, "upcoming", ["--limit", "20"])
+        # upcoming returns next N events chronologically; scale with requested days
+        limit = min(days * 3, 30)
+        return _call_gcal(account, "upcoming", ["--limit", str(limit)])
 
 
 @audited(INTEGRATION)
@@ -76,21 +83,26 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command in BLOCKED_OPS:
-        deny(INTEGRATION, args.command, {"account": args.account})
+    try:
+        if args.command in BLOCKED_OPS:
+            deny(INTEGRATION, args.command, {"account": args.account})
 
-    if args.command == "list_events":
-        print(list_events(days=args.days, account=args.account))
+        if args.command == "list_events":
+            print(list_events(days=args.days, account=args.account))
 
-    elif args.command == "get":
-        if not args.query_or_id:
-            print("ERROR: event_id required", file=sys.stderr); sys.exit(1)
-        print(get_event(event_id=args.query_or_id, account=args.account))
+        elif args.command == "get":
+            if not args.query_or_id:
+                print("ERROR: event_id required", file=sys.stderr); sys.exit(1)
+            print(get_event(event_id=args.query_or_id, account=args.account))
 
-    elif args.command == "search":
-        if not args.query_or_id:
-            print("ERROR: search query required", file=sys.stderr); sys.exit(1)
-        print(search_events(query=args.query_or_id, account=args.account))
+        elif args.command == "search":
+            if not args.query_or_id:
+                print("ERROR: search query required", file=sys.stderr); sys.exit(1)
+            print(search_events(query=args.query_or_id, account=args.account))
+
+    except PermissionError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
