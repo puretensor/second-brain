@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd ~/pureMind && git add -A && git diff --cached --quiet || git commit -m \"auto: $(date +%Y-%m-%d_%H:%M) memory update\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

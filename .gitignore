@@ -1,0 +1,13 @@
+# Never commit credentials even if accidentally created
+*credentials*
+*secrets*
+*.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Obsidian workspace state (not content)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
