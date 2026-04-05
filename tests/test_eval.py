@@ -1,10 +1,12 @@
 """Unit tests for pureMind evaluation harness metric computations.
 
-No Claude CLI required -- tests pure math functions and SQL query types.
+No Claude CLI required -- tests pure math helpers and ops utility functions.
 Run: python3 -m pytest tests/test_eval.py -v
 """
 
+import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _ROOT = str(Path(__file__).resolve().parent.parent)
@@ -12,7 +14,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from tools.eval_harness import (
-    _reciprocal_rank, _recall_at_k, _dcg_at_k, _ndcg_at_k,
+    _extract_verdict, _reciprocal_rank, _recall_at_k, _dcg_at_k, _ndcg_at_k,
 )
 
 
@@ -96,11 +98,6 @@ class TestMetricsCollector:
             assert isinstance(value, (int, float))
             assert isinstance(desc, str)
 
-    def test_collect_returns_dict(self):
-        from tools.metrics_collector import collect_all
-        result = collect_all()
-        assert isinstance(result, dict)
-
     def test_check_thresholds_returns_list(self):
         from tools.metrics_collector import check_thresholds
         alerts = check_thresholds({"chunk_count": 200, "heartbeat_ok_24h": 5})
@@ -114,9 +111,44 @@ class TestMetricsCollector:
         alerts = check_thresholds({"chunk_count": 10})
         assert any("chunk" in a.lower() for a in alerts)
 
+    def test_state_root_uses_puremind_subdir(self):
+        from tools.metrics_collector import _state_root
+        root = _state_root()
+        assert root.name == "puremind"
+
+    def test_heartbeat_counter_parses_recent_entries(self, tmp_path):
+        from tools.metrics_collector import _count_recent_heartbeat_entries
+
+        now = datetime.now(timezone.utc)
+        log = tmp_path / "heartbeat-log.jsonl"
+        log.write_text(
+            "\n".join([
+                json.dumps({"timestamp": now.isoformat(), "dry_run": False}),
+                json.dumps({"timestamp": (now - timedelta(hours=23)).isoformat(), "dry_run": False}),
+                json.dumps({"timestamp": (now - timedelta(hours=25)).isoformat(), "dry_run": False}),
+                json.dumps({"timestamp": now.isoformat(), "dry_run": True}),
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        assert _count_recent_heartbeat_entries(log) == 2.0
+
 
 class TestEvalGolden:
-    def test_list_returns_list(self):
-        from tools.eval_golden import list_golden
-        result = list_golden(as_json=False)
-        assert isinstance(result, list)
+    def test_normalize_query(self):
+        from tools.eval_golden import _normalize_query
+        assert _normalize_query("  What   Is  PGVECTOR? ") == "what is pgvector?"
+
+    def test_query_hash_is_stable(self):
+        from tools.eval_golden import _query_hash
+        assert _query_hash("What is pgvector?") == _query_hash("  what is   pgvector?  ")
+
+
+class TestFaithfulnessVerdict:
+    def test_extract_verdict_faithful(self):
+        assert _extract_verdict("FAITHFUL") is True
+
+    def test_extract_verdict_unfaithful(self):
+        assert _extract_verdict("The answer is UNFAITHFUL") is False
+
+    def test_extract_verdict_unknown(self):
+        assert _extract_verdict("Cannot determine") is None

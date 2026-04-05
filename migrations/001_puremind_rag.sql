@@ -6,7 +6,7 @@
 -- Prerequisites: vantage database with pgvector extension (already loaded).
 --
 -- Usage:
---   PGPASSWORD="REDACTED_DB_PASSWORD" psql -h 100.103.248.9 -p 30433 -U raguser -d vantage -f 001_puremind_rag.sql
+--   PGPASSWORD="<set-via-secrets-env>" psql -h 100.103.248.9 -p 30433 -U raguser -d vantage -f 001_puremind_rag.sql
 
 CREATE TABLE IF NOT EXISTS puremind_chunks (
     id              bigserial PRIMARY KEY,

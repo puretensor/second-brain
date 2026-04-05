@@ -1202,7 +1202,7 @@ import sys
 
 import psycopg2
 
-DB_DSN = "postgresql://raguser:REDACTED_DB_PASSWORD@100.103.248.9:30433/vantage"
+DB_DSN = "postgresql://raguser:<set-via-secrets-env>@100.103.248.9:30433/vantage"
 
 
 def get_conn():

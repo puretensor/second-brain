@@ -6,7 +6,12 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=puretensorai
+WorkingDirectory=/home/puretensorai/pureMind
 Environment=HOME=/home/puretensorai
 Environment=PATH=/home/puretensorai/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PUREMIND_EVAL_BUDGET_SEC=480
 ExecStart=/usr/bin/python3 /home/puretensorai/pureMind/tools/eval_harness.py
-TimeoutStartSec=600
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

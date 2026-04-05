@@ -9,6 +9,7 @@
 CREATE TABLE IF NOT EXISTS pm_eval_golden (
     id                  bigserial PRIMARY KEY,
     query               text NOT NULL,
+    query_hash          text,
     answer              text NOT NULL,
     relevant_chunk_ids  bigint[],
     source              text DEFAULT 'manual',   -- manual | seeded | harvested
@@ -16,6 +17,18 @@ CREATE TABLE IF NOT EXISTS pm_eval_golden (
     created_at          timestamptz DEFAULT now(),
     active              boolean DEFAULT true
 );
+
+-- Backfill + dedupe for legacy installs where pm_eval_golden already exists.
+ALTER TABLE pm_eval_golden ADD COLUMN IF NOT EXISTS query_hash text;
+UPDATE pm_eval_golden
+SET query_hash = md5(regexp_replace(lower(trim(query)), '\s+', ' ', 'g'))
+WHERE query_hash IS NULL;
+DELETE FROM pm_eval_golden a
+USING pm_eval_golden b
+WHERE a.id > b.id
+  AND a.query_hash = b.query_hash;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pm_eval_golden_query_hash
+    ON pm_eval_golden (query_hash);
 
 -- Weekly eval run results (one row per run)
 CREATE TABLE IF NOT EXISTS pm_eval_runs (
@@ -52,5 +65,5 @@ CREATE TABLE IF NOT EXISTS pm_metrics (
 CREATE INDEX IF NOT EXISTS idx_pm_metrics_ts ON pm_metrics (ts DESC);
 CREATE INDEX IF NOT EXISTS idx_pm_metrics_metric ON pm_metrics (metric, ts DESC);
 
--- Retention: auto-prune metrics older than 90 days (run monthly)
+-- Retention is enforced by tools/metrics_collector.py on every write:
 -- DELETE FROM pm_metrics WHERE ts < now() - interval '90 days';

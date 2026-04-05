@@ -17,7 +17,9 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _PARENT = str(Path(__file__).resolve().parent.parent)
@@ -28,11 +30,19 @@ from tools.db import get_conn, get_write_conn
 
 VAULT_ROOT = Path.home() / "pureMind"
 AUDIT_FALLBACK = Path.home() / ".cache" / "puremind" / "audit_fallback.jsonl"
+HEARTBEAT_LOG = VAULT_ROOT / "daily-logs" / "heartbeat-log.jsonl"
+SEARCH_BENCHMARK_QUERIES = ("pgvector", "PureTensor", "heartbeat")
 
 # Alert deduplication: don't re-alert on the same metric within this window
-ALERT_DEDUP_FILE = Path(
-    os.environ.get("XDG_RUNTIME_DIR", Path.home() / ".cache")
-) / "puremind_alert_dedup.json"
+def _state_root() -> Path:
+    """Per-machine state root for pureMind ops files."""
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime_dir:
+        return Path(runtime_dir) / "puremind"
+    return Path.home() / ".cache" / "puremind"
+
+
+ALERT_DEDUP_FILE = _state_root() / "alert_dedup.json"
 ALERT_DEDUP_SECONDS = 3600  # 1 hour
 
 # Thresholds: metric_name -> (operator, value, description)
@@ -58,6 +68,63 @@ def _collect_metric(conn, name: str, query: str) -> float | None:
     except Exception as e:
         print(f"WARNING: Metric '{name}' failed: {e}", file=sys.stderr)
     return None
+
+
+def _percentile(values: list[float], percentile: float) -> float | None:
+    """Simple percentile helper without an extra dependency."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    idx = (len(ordered) - 1) * percentile
+    low = int(idx)
+    high = min(low + 1, len(ordered) - 1)
+    frac = idx - low
+    return ordered[low] + (ordered[high] - ordered[low]) * frac
+
+
+def _count_recent_heartbeat_entries(log_path: Path = HEARTBEAT_LOG,
+                                    hours: int = 24) -> float:
+    """Count non-dry-run heartbeat runs in the recent JSONL log window."""
+    if not log_path.exists():
+        return 0.0
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    count = 0
+    try:
+        with log_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    ts = datetime.fromisoformat(entry["timestamp"])
+                except (KeyError, ValueError, json.JSONDecodeError):
+                    continue
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts >= cutoff and not entry.get("dry_run", False):
+                    count += 1
+    except OSError:
+        return 0.0
+    return float(count)
+
+
+def _benchmark_search_latency() -> tuple[float | None, float | None]:
+    """Measure real search latency from a few deterministic benchmark queries."""
+    from tools.search import search
+
+    durations = []
+    for query in SEARCH_BENCHMARK_QUERIES:
+        started = time.perf_counter()
+        try:
+            search(query, limit=5)
+        except Exception as e:
+            print(f"WARNING: Search benchmark failed for {query!r}: {e}", file=sys.stderr)
+            continue
+        durations.append((time.perf_counter() - started) * 1000)
+    return _percentile(durations, 0.5), _percentile(durations, 0.95)
 
 
 def collect_all() -> dict:
@@ -90,28 +157,6 @@ def collect_all() -> dict:
     metrics["audit_errors_1h"] = _collect_metric(
         conn, "audit_errors_1h",
         "SELECT count(*) FROM pm_audit WHERE result='error' AND ts > now() - interval '1 hour'"
-    )
-
-    # Search latency (last hour, from audit log)
-    metrics["search_latency_p50"] = _collect_metric(
-        conn, "search_latency_p50",
-        """SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms)
-           FROM pm_audit WHERE latency_ms IS NOT NULL
-           AND ts > now() - interval '1 hour'"""
-    )
-    metrics["search_latency_p95"] = _collect_metric(
-        conn, "search_latency_p95",
-        """SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)
-           FROM pm_audit WHERE latency_ms IS NOT NULL
-           AND ts > now() - interval '1 hour'"""
-    )
-
-    # Heartbeat health (last 24h)
-    metrics["heartbeat_ok_24h"] = _collect_metric(
-        conn, "heartbeat_ok_24h",
-        """SELECT count(*) FROM pm_audit
-           WHERE integration='heartbeat' AND result='ok'
-           AND ts > now() - interval '24 hours'"""
     )
 
     # Freshness
@@ -162,6 +207,12 @@ def collect_all() -> dict:
     except Exception:
         metrics["fallback_lines"] = 0.0
 
+    # Heartbeat health and search latency are derived from the actual runtime paths
+    metrics["heartbeat_ok_24h"] = _count_recent_heartbeat_entries()
+    bench_p50, bench_p95 = _benchmark_search_latency()
+    metrics["search_latency_p50"] = bench_p50
+    metrics["search_latency_p95"] = bench_p95
+
     # Round floats
     for k, v in metrics.items():
         if isinstance(v, float):
@@ -179,6 +230,9 @@ def store_metrics(metrics: dict):
 
     try:
         with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM pm_metrics WHERE ts < now() - interval '90 days'"
+            )
             for name, value in metrics.items():
                 if value is None or name == "error":
                     continue
@@ -208,7 +262,14 @@ def _save_dedup(state: dict):
     """Save alert deduplication state."""
     try:
         ALERT_DEDUP_FILE.parent.mkdir(parents=True, exist_ok=True)
-        ALERT_DEDUP_FILE.write_text(json.dumps(state))
+        with tempfile.NamedTemporaryFile(
+            "w", dir=str(ALERT_DEDUP_FILE.parent), delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(json.dumps(state))
+            tmp.flush()
+            os.fchmod(tmp.fileno(), 0o600)
+            temp_name = tmp.name
+        os.replace(temp_name, ALERT_DEDUP_FILE)
     except Exception:
         pass
 

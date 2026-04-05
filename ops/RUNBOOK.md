@@ -18,7 +18,7 @@
 |---|---|
 | DB DSN | `$PUREMIND_DB_DSN` or `~/.config/puremind/secrets.env` |
 | Telegram token | `$PUREMIND_TELEGRAM_TOKEN` or `~/.config/puremind/secrets.env` |
-| Grafana admin | `admin` / `consort-crazy-curl` (K3s NodePort 30302) |
+| Grafana auth | `$PUREMIND_GRAFANA_AUTH` or `~/.config/puremind/secrets.env` |
 
 ### Key Paths
 
@@ -29,6 +29,7 @@
 | `~/pureMind/daily-logs/` | Session logs, heartbeat/reflection JSONL |
 | `~/.config/puremind/secrets.env` | Credentials (0600, outside vault) |
 | `~/.cache/puremind/audit_fallback.jsonl` | Audit JSONL fallback |
+| `$XDG_RUNTIME_DIR/puremind/alert_dedup.json` or `~/.cache/puremind/alert_dedup.json` | Metrics alert dedup state |
 
 ---
 
@@ -48,7 +49,7 @@ tail -1 ~/pureMind/daily-logs/heartbeat-log.jsonl | python3 -m json.tool
 python3 ~/pureMind/tools/metrics_collector.py --json
 
 # Timer status
-systemctl --user list-timers | grep puremind
+sudo systemctl list-timers | grep puremind
 ```
 
 ---
@@ -59,7 +60,8 @@ systemctl --user list-timers | grep puremind
 
 ```bash
 # Latest eval results
-PGPASSWORD='REDACTED_DB_PASSWORD' psql -h 100.103.248.9 -p 30433 -U raguser -d vantage \
+source ~/.config/puremind/secrets.env && \
+  psql "$PUREMIND_DB_DSN" \
   -c "SELECT ts, recall_at_5, mrr, ndcg_at_5, faithfulness_score, security_pass, cost_calls_7d FROM pm_eval_runs ORDER BY ts DESC LIMIT 5"
 
 # Or run manually
@@ -77,7 +79,8 @@ python3 ~/pureMind/tools/eval_harness.py --json
 
 ```bash
 # Errors in last 7 days
-PGPASSWORD='REDACTED_DB_PASSWORD' psql -h 100.103.248.9 -p 30433 -U raguser -d vantage \
+source ~/.config/puremind/secrets.env && \
+  psql "$PUREMIND_DB_DSN" \
   -c "SELECT ts, integration, function, detail FROM pm_audit WHERE result='error' AND ts > now() - interval '7 days' ORDER BY ts DESC LIMIT 20"
 
 # Check fallback file
@@ -92,7 +95,7 @@ wc -l ~/.cache/puremind/audit_fallback.jsonl 2>/dev/null || echo "No fallback en
 1. Generate new DB password
 2. Update PostgreSQL: `ALTER USER raguser WITH PASSWORD 'new-password';`
 3. Update `~/.config/puremind/secrets.env`
-4. Restart timers: `systemctl --user restart puremind-heartbeat puremind-reflect puremind-eval puremind-metrics`
+4. Restart timers: `sudo systemctl restart puremind-heartbeat puremind-reflect puremind-eval puremind-metrics`
 5. Verify: `python3 ~/pureMind/tools/search.py "test" --limit 1`
 
 ### Dependency Update
@@ -117,8 +120,8 @@ python3 -m pytest tests/ -v  # Verify nothing broke
 ### Heartbeat Not Firing
 ```bash
 # Check timer
-systemctl --user status puremind-heartbeat.timer
-systemctl --user status puremind-heartbeat.service
+sudo systemctl status puremind-heartbeat.timer
+sudo systemctl status puremind-heartbeat.service
 
 # Check waking hours (07:00-23:00 UTC)
 date -u
@@ -157,7 +160,8 @@ python3 ~/pureMind/tools/eval_golden.py seed --count 20
 python3 -c "from tools.db import get_conn; print(get_conn())"
 
 # Review recent errors
-PGPASSWORD='REDACTED_DB_PASSWORD' psql -h 100.103.248.9 -p 30433 -U raguser -d vantage \
+source ~/.config/puremind/secrets.env && \
+  psql "$PUREMIND_DB_DSN" \
   -c "SELECT ts, integration, function, detail FROM pm_audit WHERE result='error' ORDER BY ts DESC LIMIT 10"
 
 # Check fallback file
@@ -167,15 +171,18 @@ cat ~/.cache/puremind/audit_fallback.jsonl | python3 -m json.tool | head -50
 ### High Latency (P95 > 5s)
 ```bash
 # Check DB connections
-PGPASSWORD='REDACTED_DB_PASSWORD' psql -h 100.103.248.9 -p 30433 -U raguser -d vantage \
+source ~/.config/puremind/secrets.env && \
+  psql "$PUREMIND_DB_DSN" \
   -c "SELECT count(*) FROM pg_stat_activity WHERE datname='vantage'"
 
 # Check slow queries
-PGPASSWORD='REDACTED_DB_PASSWORD' psql -h 100.103.248.9 -p 30433 -U raguser -d vantage \
+source ~/.config/puremind/secrets.env && \
+  psql "$PUREMIND_DB_DSN" \
   -c "SELECT function, avg(latency_ms), max(latency_ms) FROM pm_audit WHERE ts > now() - interval '1 hour' GROUP BY function ORDER BY avg DESC"
 
 # VACUUM/ANALYZE
-PGPASSWORD='REDACTED_DB_PASSWORD' psql -h 100.103.248.9 -p 30433 -U raguser -d vantage \
+source ~/.config/puremind/secrets.env && \
+  psql "$PUREMIND_DB_DSN" \
   -c "VACUUM ANALYZE puremind_chunks; VACUUM ANALYZE pm_entities;"
 ```
 
@@ -194,13 +201,15 @@ python3 -c "import json; d=json.load(open('tests/payloads.json')); print({k: len
 ### Grafana Dashboard Not Loading
 ```bash
 # Check Grafana is running
-curl -s -u admin:consort-crazy-curl http://100.103.248.9:30302/api/health
+source ~/.config/puremind/secrets.env && \
+  curl -s -u "$PUREMIND_GRAFANA_AUTH" "${PUREMIND_GRAFANA_URL:-http://100.103.248.9:30302}/api/health"
 
 # Re-deploy dashboard
 bash ~/pureMind/ops/deploy_dashboard.sh
 
 # Check PostgreSQL datasource
-curl -s -u admin:consort-crazy-curl http://100.103.248.9:30302/api/datasources | python3 -m json.tool
+source ~/.config/puremind/secrets.env && \
+  curl -s -u "$PUREMIND_GRAFANA_AUTH" "${PUREMIND_GRAFANA_URL:-http://100.103.248.9:30302}/api/datasources" | python3 -m json.tool
 ```
 
 ---
@@ -217,7 +226,7 @@ curl -s -u admin:consort-crazy-curl http://100.103.248.9:30302/api/datasources |
 | `summary_freshness_hours` | > 168 | Telegram | Run summarize.py --build-all |
 | `fallback_lines` | > 0 | Telegram | DB was unavailable; check connectivity |
 
-Alert deduplication: 1 hour per metric. State in `$XDG_RUNTIME_DIR/puremind_alert_dedup.json`.
+Alert deduplication: 1 hour per metric. State in `$XDG_RUNTIME_DIR/puremind/alert_dedup.json` (fallback: `~/.cache/puremind/alert_dedup.json`).
 
 ---
 

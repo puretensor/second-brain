@@ -14,7 +14,8 @@ Usage:
 
 import argparse
 import json
-import random
+import os
+import re
 import subprocess
 import sys
 import time
@@ -30,6 +31,83 @@ from tools.db import get_conn, get_write_conn
 from tools.embed import embed_query
 
 VAULT_ROOT = Path.home() / "pureMind"
+DEFAULT_EVAL_BUDGET_SEC = int(os.environ.get("PUREMIND_EVAL_BUDGET_SEC", "480"))
+DEFAULT_FAITHFULNESS_SAMPLE_SIZE = int(
+    os.environ.get("PUREMIND_FAITHFULNESS_SAMPLE_SIZE", "5")
+)
+CLAUDE_CALL_TIMEOUT_SEC = int(os.environ.get("PUREMIND_CLAUDE_TIMEOUT_SEC", "45"))
+RAG_CONTEXT_CHARS = 800
+RAG_CONTEXT_RESULTS = 5
+
+
+def _remaining_budget(deadline: float | None) -> float | None:
+    """Seconds remaining before the overall eval budget expires."""
+    if deadline is None:
+        return None
+    return deadline - time.monotonic()
+
+
+def _claude_text(prompt: str, timeout: int = CLAUDE_CALL_TIMEOUT_SEC,
+                 deadline: float | None = None) -> str | None:
+    """Call Claude with both per-call and aggregate-budget limits."""
+    remaining = _remaining_budget(deadline)
+    if remaining is not None:
+        if remaining <= 5:
+            return None
+        timeout = max(1, min(timeout, int(remaining - 2)))
+    try:
+        result = subprocess.run(
+            ["claude", "-p", "--max-turns", "1", "--output-format", "text"],
+            input=prompt, capture_output=True, text=True, timeout=timeout,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    return None
+
+
+def _extract_verdict(text: str) -> bool | None:
+    """Parse Claude's judge output into faithful / unfaithful / unknown."""
+    if not text:
+        return None
+    upper = text.strip().upper()
+    if re.search(r"\bUNFAITHFUL\b", upper):
+        return False
+    if re.search(r"\bFAITHFUL\b", upper):
+        return True
+    return None
+
+
+def _build_rag_answer(query: str, deadline: float | None = None) -> tuple[str | None, list[dict]]:
+    """Generate an answer grounded only in retrieved pureMind context."""
+    from tools.search import search
+
+    try:
+        results = search(query, limit=RAG_CONTEXT_RESULTS)
+    except Exception:
+        return None, []
+
+    if not results:
+        return None, []
+
+    context_parts = []
+    for idx, item in enumerate(results[:RAG_CONTEXT_RESULTS], 1):
+        context_parts.append(
+            f"[{idx}] {item.get('file_path', 'unknown')} :: "
+            f"{(item.get('heading_path') or '').strip()}\n"
+            f"{(item.get('content') or '')[:RAG_CONTEXT_CHARS]}"
+        )
+    prompt = (
+        "Answer the question using ONLY the retrieved context below. "
+        "If the context is insufficient, say so briefly. "
+        "Do not use outside knowledge.\n\n"
+        f"Question: {query}\n\n"
+        "Retrieved context:\n"
+        f"{chr(10).join(context_parts)}\n\n"
+        "Return 1-3 concise sentences."
+    )
+    return _claude_text(prompt, deadline=deadline), results
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +147,7 @@ def _ndcg_at_k(relevant: set, retrieved: list, k: int) -> float:
     return dcg / ideal if ideal > 0 else 0.0
 
 
-def eval_retrieval(limit: int = 5) -> dict:
+def eval_retrieval(limit: int = 10) -> dict:
     """Run golden queries through search, compute Recall@k, MRR, nDCG.
 
     Uses the search module directly (BM25 + vector hybrid).
@@ -104,7 +182,7 @@ def eval_retrieval(limit: int = 5) -> dict:
 
         # Run hybrid search
         try:
-            results = search(query, limit=10)
+            results = search(query, limit=limit)
         except Exception as e:
             per_query.append({"id": gid, "query": query, "error": str(e)})
             continue
@@ -150,8 +228,9 @@ def eval_retrieval(limit: int = 5) -> dict:
 # Generation quality (Claude CLI as judge)
 # ---------------------------------------------------------------------------
 
-def eval_generation(sample_size: int = 10) -> dict:
-    """Sample golden pairs, generate answers, judge faithfulness."""
+def eval_generation(sample_size: int = DEFAULT_FAITHFULNESS_SAMPLE_SIZE,
+                    deadline: float | None = None) -> dict:
+    """Sample golden pairs, generate RAG-grounded answers, judge faithfulness."""
     conn = get_conn()
     if conn is None:
         return {"error": "DB unavailable"}
@@ -169,54 +248,50 @@ def eval_generation(sample_size: int = 10) -> dict:
         return {"error": "No golden pairs", "faithfulness_score": 0}
 
     faithful_count = 0
+    unfaithful_count = 0
+    unknown_count = 0
     total_judged = 0
 
     for query, gold_answer in samples:
-        # Generate answer via search + Claude
-        prompt = (
-            f"Answer this question about PureTensor/pureMind based on your knowledge:\n"
-            f"Question: {query}\n\n"
-            f"Be concise (1-3 sentences)."
-        )
-        try:
-            gen_result = subprocess.run(
-                ["claude", "-p", "--max-turns", "1", "--output-format", "text"],
-                input=prompt, capture_output=True, text=True, timeout=60,
-            )
-            generated = gen_result.stdout.strip() if gen_result.returncode == 0 else ""
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            continue
+        if _remaining_budget(deadline) is not None and _remaining_budget(deadline) <= 10:
+            break
 
+        generated, retrieved = _build_rag_answer(query, deadline=deadline)
         if not generated:
             continue
 
-        # Judge faithfulness
+        context_text = "\n\n".join(
+            f"{item.get('file_path', 'unknown')}\n{(item.get('content') or '')[:RAG_CONTEXT_CHARS]}"
+            for item in retrieved[:RAG_CONTEXT_RESULTS]
+        )
         judge_prompt = (
-            f"Judge if the GENERATED answer is faithful to the REFERENCE answer. "
-            f"They don't need to be identical, but the generated answer should not "
-            f"contradict or hallucinate beyond the reference.\n\n"
+            "Judge whether the GENERATED answer is both supported by the CONTEXT "
+            "and consistent with the REFERENCE answer. Reply with exactly one word: "
+            "FAITHFUL, UNFAITHFUL, or UNKNOWN.\n\n"
+            f"CONTEXT:\n{context_text}\n\n"
             f"REFERENCE: {gold_answer}\n"
             f"GENERATED: {generated}\n\n"
-            f"Reply with exactly one word: FAITHFUL or UNFAITHFUL"
+            "Verdict:"
         )
-        try:
-            judge_result = subprocess.run(
-                ["claude", "-p", "--max-turns", "1", "--output-format", "text"],
-                input=judge_prompt, capture_output=True, text=True, timeout=60,
-            )
-            verdict = judge_result.stdout.strip().upper() if judge_result.returncode == 0 else ""
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+        verdict = _claude_text(judge_prompt, deadline=deadline)
+        parsed_verdict = _extract_verdict(verdict or "")
+        if parsed_verdict is None:
+            unknown_count += 1
             continue
 
         total_judged += 1
-        if "FAITHFUL" in verdict and "UNFAITHFUL" not in verdict:
+        if parsed_verdict:
             faithful_count += 1
+        else:
+            unfaithful_count += 1
 
     score = faithful_count / total_judged if total_judged > 0 else 0
     return {
         "faithfulness_score": round(score, 4),
         "judged": total_judged,
         "faithful": faithful_count,
+        "unfaithful": unfaithful_count,
+        "unknown": unknown_count,
         "sampled": len(samples),
     }
 
@@ -225,7 +300,7 @@ def eval_generation(sample_size: int = 10) -> dict:
 # Personalisation (embedding similarity)
 # ---------------------------------------------------------------------------
 
-def eval_personalisation() -> dict:
+def eval_personalisation(deadline: float | None = None) -> dict:
     """Compare Claude-generated content against style templates."""
     template_path = VAULT_ROOT / "templates" / "email-style.md"
     if not template_path.exists():
@@ -240,15 +315,9 @@ def eval_personalisation() -> dict:
         "business partner about scheduling a meeting next week. Use PureTensor's "
         "direct, concise communication style. 3-4 sentences max."
     )
-    try:
-        result = subprocess.run(
-            ["claude", "-p", "--max-turns", "1", "--output-format", "text"],
-            input=prompt, capture_output=True, text=True, timeout=60,
-        )
-        generated = result.stdout.strip() if result.returncode == 0 else ""
-    except (subprocess.TimeoutExpired, FileNotFoundError):
+    generated = _claude_text(prompt, deadline=deadline)
+    if generated is None:
         return {"personalisation_score": 0, "error": "Claude CLI unavailable"}
-
     if not generated:
         return {"personalisation_score": 0, "error": "Empty generation"}
 
@@ -306,7 +375,9 @@ def eval_security() -> dict:
     # Run pytest programmatically
     try:
         result = subprocess.run(
-            ["python3", "-m", "pytest", "tests/test_sanitize.py", "-v", "--tb=short"],
+            ["python3", "-m", "pytest",
+             "tests/test_sanitize.py", "tests/test_eval.py",
+             "-v", "--tb=short"],
             capture_output=True, text=True, timeout=30,
             cwd=str(VAULT_ROOT),
         )
@@ -390,17 +461,24 @@ def eval_cost() -> dict:
 def run_full_eval(dry_run: bool = False, retrieval_only: bool = False) -> dict:
     """Run all 6 evaluations, write results, notify."""
     start = time.time()
+    deadline = time.monotonic() + DEFAULT_EVAL_BUDGET_SEC
     results = {}
 
     print("Eval: retrieval quality...", file=sys.stderr)
     results["retrieval"] = eval_retrieval()
 
     if not retrieval_only:
-        print("Eval: generation quality...", file=sys.stderr)
-        results["generation"] = eval_generation(sample_size=10)
+        if _remaining_budget(deadline) and _remaining_budget(deadline) > 10:
+            print("Eval: generation quality...", file=sys.stderr)
+            results["generation"] = eval_generation(deadline=deadline)
+        else:
+            results["generation"] = {"error": "budget exhausted"}
 
-        print("Eval: personalisation...", file=sys.stderr)
-        results["personalisation"] = eval_personalisation()
+        if _remaining_budget(deadline) and _remaining_budget(deadline) > 10:
+            print("Eval: personalisation...", file=sys.stderr)
+            results["personalisation"] = eval_personalisation(deadline=deadline)
+        else:
+            results["personalisation"] = {"error": "budget exhausted"}
 
         print("Eval: latency...", file=sys.stderr)
         results["latency"] = eval_latency()
@@ -413,6 +491,7 @@ def run_full_eval(dry_run: bool = False, retrieval_only: bool = False) -> dict:
 
     elapsed = int(time.time() - start)
     results["elapsed_seconds"] = elapsed
+    results["budget_seconds"] = DEFAULT_EVAL_BUDGET_SEC
 
     # Build summary
     r = results.get("retrieval", {})

@@ -3,7 +3,7 @@
 -- Same database as Phase 3 (vantage on fox-n1:30433).
 --
 -- Usage:
---   PGPASSWORD="REDACTED_DB_PASSWORD" psql -h 100.103.248.9 -p 30433 -U raguser -d vantage -f 002_audit_log.sql
+--   PGPASSWORD="<set-via-secrets-env>" psql -h 100.103.248.9 -p 30433 -U raguser -d vantage -f 002_audit_log.sql
 
 CREATE TABLE IF NOT EXISTS pm_audit (
     id          bigserial PRIMARY KEY,
