@@ -58,4 +58,28 @@ Fires before context compression. Appends `### Compaction Extract` to today's da
 Runs in background on exit. Appends `---` session boundary to daily log. Git commits. Logs metadata to `~/.claude/session_log.jsonl`.
 
 ### Daily Reflection (`daily_reflect.py`)
-Systemd timer at 23:00 UTC (`puremind-reflect.timer`). Uses Claude CLI (`claude -p`) to analyze today's daily log against current memory.md. Promotes durable knowledge to RAM, resolves pending items, archives logs >30 days old. Dry-run: `python3 ~/pureMind/.claude/hooks/daily_reflect.py --dry-run`.
+Systemd timer at 23:00 UTC (`puremind-reflect.timer`). Uses Claude CLI (`claude -p`) to analyze today's daily log against current memory.md. Fetches historical context via RAG search before reflection (Phase 3). Promotes durable knowledge to RAM, resolves pending items, archives logs >30 days old. Dry-run: `python3 ~/pureMind/.claude/hooks/daily_reflect.py --dry-run`.
+
+## Search & Retrieval (Phase 3)
+
+Hybrid RAG using pgvector + PostgreSQL FTS with Reciprocal Rank Fusion. Data stored in `puremind_chunks` table in the `vantage` database (fox-n1:30433).
+
+### Search
+```bash
+python3 ~/pureMind/tools/search.py "<query>" --limit 5
+```
+Options: `--json`, `--file-filter prefix`, `--limit N`. Also available as `/puremind-search` skill.
+
+### Indexing
+Auto-indexes on vault file changes via PostToolUse hook. Manual:
+```bash
+python3 ~/pureMind/tools/index.py            # Incremental (changed files)
+python3 ~/pureMind/tools/index.py --full      # Full re-index
+```
+
+### Components
+- `tools/chunker.py` -- heading-aware markdown chunker (2048-char max, 20% overlap)
+- `tools/embed.py` -- nomic-embed-text-v1.5 (768-dim) via sentence-transformers
+- `tools/index.py` -- full + incremental indexing with SHA-256 change detection
+- `tools/search.py` -- hybrid BM25+vector search with RRF fusion (k=60)
+- `migrations/001_puremind_rag.sql` -- database schema

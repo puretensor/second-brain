@@ -14,6 +14,7 @@ Usage:
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -76,6 +77,9 @@ Output ONLY valid JSON. No markdown fencing, no commentary.
 
 ### Today's Daily Log
 {daily_log}
+
+### Historical Context (RAG)
+{historical_context}
 """
 
 
@@ -400,6 +404,60 @@ def log_result(date_str: str, stats: dict, summary: str):
         pass
 
 
+def extract_topics(daily_log: str) -> list[str]:
+    """Extract key topics from daily log for RAG queries."""
+    topics = []
+    # Grab headings
+    for match in re.finditer(r"^#{1,4}\s+(.+)$", daily_log, re.MULTILINE):
+        topics.append(match.group(1).strip())
+    # Grab bold terms
+    for match in re.finditer(r"\*\*([^*]+)\*\*", daily_log):
+        term = match.group(1).strip().rstrip(":")
+        if len(term) > 3 and len(term) < 80:
+            topics.append(term)
+    # Deduplicate, limit
+    seen = set()
+    unique = []
+    for t in topics:
+        if t.lower() not in seen:
+            seen.add(t.lower())
+            unique.append(t)
+    return unique[:10]
+
+
+def get_rag_context(daily_log: str) -> str:
+    """Search pureMind RAG for historical context related to today's topics."""
+    SEARCH_TOOL = PUREMIND_ROOT / "tools" / "search.py"
+    if not SEARCH_TOOL.exists():
+        return "(RAG not available -- search.py not found)"
+
+    topics = extract_topics(daily_log)
+    if not topics:
+        return "(no topics extracted from daily log)"
+
+    # Build a combined query from top topics
+    query = " ".join(topics[:5])
+    try:
+        result = subprocess.run(
+            [sys.executable, str(SEARCH_TOOL), query, "--limit", "5", "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            return f"(RAG search failed: {result.stderr[:100]})"
+
+        results = json.loads(result.stdout)
+        if not results:
+            return "(no relevant historical context found)"
+
+        lines = []
+        for r in results:
+            lines.append(f"- [{r['file_path']}] {r['content'][:300]}")
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"(RAG search error: {e})"
+
+
 def main():
     dry_run = "--dry-run" in sys.argv
     date_override = None
@@ -419,12 +477,18 @@ def main():
     memory_content = read_file_safe(MEMORY_FILE)
     pending_content = read_file_safe(PENDING_FILE)
 
+    # Fetch RAG context (even in dry-run to show what would be included)
+    historical_context = get_rag_context(daily_log)
+
     if dry_run:
         print(f"=== pureMind Reflection (DRY RUN) -- {target_date} ===\n")
         print("Showing what WOULD happen. No Claude call, no file writes.\n")
         print(f"Daily log: {len(daily_log)} chars")
         print(f"Memory: {len(memory_content)} chars ({len(memory_content.encode('utf-8'))} bytes / {MEMORY_CAP_BYTES} cap)")
         print(f"Pending: {len(pending_content)} chars")
+        topics = extract_topics(daily_log)
+        print(f"Topics extracted: {topics[:5]}")
+        print(f"Historical context: {len(historical_context)} chars")
         print("\nTo run for real, omit --dry-run.")
         sys.exit(0)
 
@@ -433,6 +497,7 @@ def main():
         memory_content=memory_content,
         pending_content=pending_content,
         daily_log=daily_log,
+        historical_context=historical_context,
     )
 
     # Call Claude

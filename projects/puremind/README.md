@@ -2,7 +2,7 @@
 
 Sovereign second brain built on Claude Code CLI (Max 20x) + Obsidian + pgvector.
 
-- **Status:** Phase 2 complete
+- **Status:** Phase 3 complete
 - **PRD:** PT-2026-SB v2 (2026-04-04)
 - **Repo:** github:puretensor/second-brain
 - **Runtime:** Tensor-Core (vault), Ray Trinity (compute, Phase 3+)
@@ -20,7 +20,7 @@ Sovereign second brain built on Claude Code CLI (Max 20x) + Obsidian + pgvector.
 
 1. Memory Foundation (Days 1-3) -- **Complete**
 2. Context Persistence & Hooks (Days 4-6) -- **Complete**
-3. Memory Search & Hybrid RAG (Days 7-12) -- Planned
+3. Memory Search & Hybrid RAG (Days 7-12) -- **Complete**
 4. Direct Integrations (Days 13-18) -- Planned
 5. Skills Framework (Days 19-24) -- Planned
 6. Heartbeat & Proactive Agent (Days 25-30) -- Planned
