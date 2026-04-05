@@ -58,3 +58,11 @@ See `memory/pending.md` for time-sensitive follow-ups (Google Startups, EUSS, Ha
 ## Cloudflare Zones
 
 11 domains: alanapter.com, bretalon.com, krakumail.com, nesdia.com, pureclaw.ai, puretensor.ai/.com/.org, varangian.ai/.co.uk
+
+## Recent Promotions
+- **pureMind Vault:** ~/pureMind/, github.com/puretensor/second-brain (private). Phases 1-8 complete. Memory cap 5120 bytes; trims from 'Recent Promotions' first. Credentials in ~/.config/puremind/secrets.env (mode 0600) only -- never in Git.
+- **pureMind Timers:** puremind-reflect.timer (23:00 UTC daily, Persistent=true), puremind-heartbeat.timer (every 30 min, 07:00-22:30 UTC). Both system-level systemd timers following claude-memory-sync.timer pattern.
+- **Claude CLI:** ~/.local/bin/claude v2.1.92. Flags: -p (pipe), --output-format json, --max-turns 1. SESSION_ID env var always 'unknown' -- use timestamp-based session markers instead.
+- **pureMind RAG:** puremind_chunks in vantage DB (PostgreSQL 15.4, pgvector 0.5.1), fox-n1:30433. nomic-embed-text-v1.5 768-dim, pinned rev e5cf08aa, sentence-transformers 5.2.3. 3-way RRF fusion (BM25 + semantic + graph). HyDE via --hyde flag (~3s overhead).
+- **pureMind Security:** tools/credentials.py resolves env > ~/.config/puremind/secrets.env > fallback. tools/sanitize.py: 4-layer sanitization (control chars, injection, fence escaping, size). Rate limiter at /run/user/1000/puremind_rate/ (0700). Zero hardcoded credentials in tools/ or integrations/.
+- **pureMind Skills:** 15 skills with YAML frontmatter contracts. Heartbeat proactivity default: observer. Adviser/Partner require manual config. Autonomous deferred to Phase 9.
