@@ -118,3 +118,33 @@ python3 ~/pureMind/.claude/integrations/telegram_integration.py post_alert "Depl
 - `.claude/integrations/base.py` -- audit logging, rate limiting, @audited decorator
 - `.claude/integrations/{gmail,github,calendar,telegram}_integration.py` -- wrappers
 - `migrations/002_audit_log.sql` -- pm_audit table schema
+
+## Skills Framework (Phase 5)
+
+14 skills in `.claude/skills/`. Skills are markdown instructions that compose existing tools and integrations.
+
+### Skill Library
+
+| Skill | What It Does |
+|---|---|
+| `/briefing` | Morning briefing: calendar + email + pending + GitHub |
+| `/puremind-search` | Hybrid RAG search over vault (BM25 + pgvector) |
+| `/gmail` | Gmail read + draft operations |
+| `/github` | GitHub read + comment operations |
+| `/calendar` | Calendar read-only operations |
+| `/alerts` | Telegram alerts to operator |
+| `/draft-email` | Compose email in operator's voice, create Gmail draft |
+| `/reflect` | Manual trigger for daily reflection/promotion pipeline |
+| `/project-status` | Project summary from vault, daily logs, and GitHub |
+| `/diagram` | Generate Mermaid/Excalidraw diagrams |
+| `/write` | Long-form writing with style templates |
+| `/research` | Vault-first deep research with web fallback and citations |
+| `/ingest` | Ingest URLs, PDFs, docs into knowledge base with provenance |
+| `/self-evolve` | Create or modify skills by analyzing existing patterns |
+
+### Content Ingestion
+```bash
+python3 ~/pureMind/tools/ingest.py document.pdf --title "Title" --category research --tags tag1,tag2
+python3 ~/pureMind/tools/ingest.py --from-stdin --title "Title" --source-url https://example.com
+```
+Supports PDF (pdfplumber/PyMuPDF), markdown, text. Adds YAML frontmatter with provenance. Auto-indexes.

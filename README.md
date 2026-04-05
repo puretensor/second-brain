@@ -16,23 +16,19 @@ Five planes, one LLM. Claude Code is the reasoning layer across all of them.
 | **Interaction** | Search, Q&A, writing, meeting prep | Claude Code CLI as primary interface | 1 (live), 5 |
 | **Action** | Agent workflows, tool execution, memory write-back | Claude Code skills + hooks, Agent SDK for cron | 2, 5, 6 |
 
-### What is live now (Phases 1-4)
+### What is live now (Phases 1-5)
 - Git-backed Obsidian-compatible vault with core identity files (soul.md, user.md, memory.md)
-- Knowledge, project, and template files seeded from existing operational memory
-- Auto-commit hook on file writes within the vault
-- SessionStart hook loads pureMind identity stack (with legacy fallback)
-- PreCompact hook captures context to daily logs before compression
-- SessionEnd hook marks session boundaries and commits daily logs
-- Daily reflection cron (23:00 UTC) promotes high-signal items from logs to memory.md
+- Auto-commit hook, SessionStart/PreCompact/SessionEnd hooks, daily reflection cron (23:00 UTC)
 - Hybrid RAG search (BM25 + pgvector semantic with RRF fusion) over all vault content
 - Auto-indexing on file changes via PostToolUse hook
-- `/puremind-search` skill for on-demand knowledge retrieval
 - Permission-enforced integrations: Gmail (read+draft), GitHub (read+comment), Calendar (read), Telegram (alerts)
 - Audit logging: every integration call tracked in pm_audit table with latency, params, result
-- 5 integration skills: `/gmail`, `/github`, `/calendar`, `/alerts`, `/briefing`
+- 14 skills: briefing, search, gmail, github, calendar, alerts, draft-email, reflect, project-status, diagram, write, research, ingest, self-evolve
+- Content ingestion tool: PDF, markdown, text, URL ingestion with provenance frontmatter
+- Self-evolving skill creation: pureMind creates its own new skills by analyzing existing patterns
 
-### What is planned (Phases 5-9)
-- Skill library and proactive heartbeat agent (Phases 5-6)
+### What is planned (Phases 6-9)
+- Proactive heartbeat agent (Phase 6)
 - Knowledge graph, security hardening, eval framework (Phases 7-9)
 
 ## Core Stack
@@ -98,7 +94,7 @@ pureMind/
 | 2 | Context Persistence & Hooks | 4-6 | Complete |
 | 3 | Memory Search & Hybrid RAG | 7-12 | Complete |
 | 4 | Direct Integrations | 13-18 | Complete |
-| 5 | Skills Framework | 19-24 | Planned |
+| 5 | Skills Framework | 19-24 | Complete |
 | 6 | Heartbeat & Proactive Agent | 25-30 | Planned |
 | 7 | Knowledge Graph & Advanced Retrieval | 31-40 | Planned |
 | 8 | Security Hardening | 41-48 | Planned |
