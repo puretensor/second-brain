@@ -1,0 +1,12 @@
+[Unit]
+Description=pureMind evaluation harness -- weekly quality assessment
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=puretensorai
+Environment=HOME=/home/puretensorai
+Environment=PATH=/home/puretensorai/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /home/puretensorai/pureMind/tools/eval_harness.py
+TimeoutStartSec=600

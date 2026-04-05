@@ -244,7 +244,7 @@ Every integration call logged to `pm_audit`. JSONL fallback at `~/.cache/puremin
 
 ### Testing
 ```bash
-python3 -m pytest tests/test_sanitize.py -v    # Fast (22 tests, <1s)
+python3 -m pytest tests/test_sanitize.py -v    # Fast (30 tests, <1s)
 python3 -m pytest tests/test_injection.py -v   # Integration (Claude CLI)
 ```
 
@@ -256,3 +256,54 @@ python3 -m pytest tests/test_injection.py -v   # Integration (Claude CLI)
 - `tests/test_injection.py` -- Claude CLI integration tests
 - `requirements.txt` -- pinned dependency versions
 - `SECURITY.md` -- threat model, quarterly review checklist
+
+## Evaluation & Ops Maturity (Phase 9)
+
+Measurable quality, monitoring, and operational documentation.
+
+### Eval Harness
+Weekly evaluation of 6 metrics: retrieval quality (Recall@k, MRR, nDCG), generation faithfulness, personalisation, latency, security, cost. Results in `pm_eval_runs` table.
+```bash
+python3 ~/pureMind/tools/eval_harness.py              # Full eval (weekly timer)
+python3 ~/pureMind/tools/eval_harness.py --dry-run     # Preview
+python3 ~/pureMind/tools/eval_harness.py --json        # JSON output
+```
+
+### Golden Dataset
+50+ query-answer pairs with ground-truth chunk IDs for retrieval evaluation.
+```bash
+python3 ~/pureMind/tools/eval_golden.py stats          # Dataset stats
+python3 ~/pureMind/tools/eval_golden.py seed --count 20  # Generate more pairs
+python3 ~/pureMind/tools/eval_golden.py --list          # List all pairs
+```
+
+### Metrics & Monitoring
+15-minute collector writes system health to `pm_metrics` table. Grafana dashboard at fox-n1:30302.
+```bash
+python3 ~/pureMind/tools/metrics_collector.py --json   # Current metrics
+bash ~/pureMind/ops/deploy_dashboard.sh                # Deploy/update Grafana dashboard
+```
+
+### Alerting
+Threshold-based alerts via Telegram (@puretensor_alert_bot). Deduplication: 1 alert/metric/hour.
+
+### Systemd Timers
+| Timer | Schedule |
+|---|---|
+| `puremind-eval.timer` | Saturday 04:00 UTC (weekly) |
+| `puremind-metrics.timer` | Every 15 minutes |
+
+### Testing
+```bash
+python3 -m pytest tests/test_eval.py -v               # Eval metric tests (22 tests)
+```
+
+### Components
+- `tools/eval_harness.py` -- weekly evaluation (6 metrics)
+- `tools/eval_golden.py` -- golden QA dataset builder
+- `tools/metrics_collector.py` -- 15-min health collector + alerting
+- `ops/grafana/puremind-overview.json` -- Grafana dashboard
+- `ops/deploy_dashboard.sh` -- dashboard deployment script
+- `ops/RUNBOOK.md` -- operational runbook
+- `tests/test_eval.py` -- eval metric unit tests
+- `migrations/004_eval_ops.sql` -- database schema

@@ -39,9 +39,11 @@ Five planes, one LLM. Claude Code is the reasoning layer across all of them.
 - Audit hardening: JSONL fallback when DB unavailable, per-user rate limiter (0700), connect_timeout
 - Dependency pinning: all Python packages pinned to exact versions
 - PDF resource limits: 120s timeout, 200-page cap
-
-### What is planned (Phase 9)
-- Evaluation framework, ops maturity (Phase 9)
+- Evaluation harness: weekly 6-metric assessment (retrieval, generation, personalisation, latency, security, cost)
+- Golden dataset: 55 QA pairs with ground-truth chunk IDs for retrieval metrics (Recall@k, MRR, nDCG)
+- Metrics collector: 15-minute health checks to PostgreSQL with threshold-based Telegram alerts
+- Grafana dashboard: 6-row overview (health, retrieval, generation, latency, security, freshness)
+- Operational runbook: service map, troubleshooting, alerting matrix, recovery procedures
 
 ## Core Stack
 
@@ -110,7 +112,7 @@ pureMind/
 | 6 | Heartbeat & Proactive Agent | 25-30 | Complete |
 | 7 | Knowledge Graph & Advanced Retrieval | 31-40 | Complete |
 | 8 | Security Hardening | 41-48 | Complete |
-| 9 | Evaluation & Ops Maturity | 49-56 | Planned |
+| 9 | Evaluation & Ops Maturity | 49-56 | Complete |
 
 ## License
 

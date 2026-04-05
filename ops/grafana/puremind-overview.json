@@ -1,0 +1,137 @@
+{
+  "dashboard": {
+    "uid": "puremind-overview",
+    "title": "pureMind Overview",
+    "tags": ["puremind"],
+    "timezone": "utc",
+    "refresh": "5m",
+    "time": {"from": "now-7d", "to": "now"},
+    "panels": [
+      {
+        "title": "Chunk Count",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+        "targets": [{
+          "rawSql": "SELECT value FROM pm_metrics WHERE metric='chunk_count' ORDER BY ts DESC LIMIT 1",
+          "format": "table"
+        }],
+        "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "red", "value": 0}, {"color": "green", "value": 50}]}}}
+      },
+      {
+        "title": "Entity Count",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+        "targets": [{
+          "rawSql": "SELECT value FROM pm_metrics WHERE metric='entity_count' ORDER BY ts DESC LIMIT 1",
+          "format": "table"
+        }]
+      },
+      {
+        "title": "Heartbeat (24h)",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+        "targets": [{
+          "rawSql": "SELECT value FROM pm_metrics WHERE metric='heartbeat_ok_24h' ORDER BY ts DESC LIMIT 1",
+          "format": "table"
+        }],
+        "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "red", "value": 0}, {"color": "green", "value": 1}]}}}
+      },
+      {
+        "title": "Audit Errors (1h)",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+        "targets": [{
+          "rawSql": "SELECT value FROM pm_metrics WHERE metric='audit_errors_1h' ORDER BY ts DESC LIMIT 1",
+          "format": "table"
+        }],
+        "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "red", "value": 5}]}}}
+      },
+      {
+        "title": "Search Latency (P50)",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+        "targets": [{
+          "rawSql": "SELECT value FROM pm_metrics WHERE metric='search_latency_p50' ORDER BY ts DESC LIMIT 1",
+          "format": "table"
+        }],
+        "fieldConfig": {"defaults": {"unit": "ms", "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 3000}, {"color": "red", "value": 5000}]}}}
+      },
+      {
+        "title": "Fallback Lines",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+        "targets": [{
+          "rawSql": "SELECT value FROM pm_metrics WHERE metric='fallback_lines' ORDER BY ts DESC LIMIT 1",
+          "format": "table"
+        }],
+        "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "red", "value": 1}]}}}
+      },
+
+      {
+        "title": "Retrieval Quality (Weekly)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+        "targets": [
+          {"rawSql": "SELECT ts AS time, recall_at_5 AS \"Recall@5\", mrr AS \"MRR\", ndcg_at_5 AS \"nDCG@5\" FROM pm_eval_runs ORDER BY ts", "format": "time_series"}
+        ],
+        "fieldConfig": {"defaults": {"min": 0, "max": 1}}
+      },
+      {
+        "title": "Generation & Personalisation (Weekly)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+        "targets": [
+          {"rawSql": "SELECT ts AS time, faithfulness_score AS \"Faithfulness\", personalisation_score AS \"Personalisation\" FROM pm_eval_runs ORDER BY ts", "format": "time_series"}
+        ],
+        "fieldConfig": {"defaults": {"min": 0, "max": 1}}
+      },
+
+      {
+        "title": "Search Latency (15-min)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+        "targets": [
+          {"rawSql": "SELECT ts AS time, value FROM pm_metrics WHERE metric='search_latency_p50' ORDER BY ts", "format": "time_series"},
+          {"rawSql": "SELECT ts AS time, value FROM pm_metrics WHERE metric='search_latency_p95' ORDER BY ts", "format": "time_series"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": [{"matcher": {"id": "byName", "options": "value"}, "properties": [{"id": "displayName", "value": "P50"}]}, {"matcher": {"id": "byFrameRefID", "options": "B"}, "properties": [{"id": "displayName", "value": "P95"}]}]}
+      },
+      {
+        "title": "Security & Cost (Weekly)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+        "targets": [
+          {"rawSql": "SELECT ts AS time, security_tests_passed AS \"Tests Passed\", cost_calls_7d AS \"Calls (7d)\" FROM pm_eval_runs ORDER BY ts", "format": "time_series"}
+        ]
+      },
+
+      {
+        "title": "Embedding Freshness",
+        "type": "timeseries",
+        "gridPos": {"h": 6, "w": 8, "x": 0, "y": 20},
+        "targets": [
+          {"rawSql": "SELECT ts AS time, value AS \"Hours Since Update\" FROM pm_metrics WHERE metric='embedding_freshness_hours' ORDER BY ts", "format": "time_series"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "h", "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "red", "value": 48}]}}}
+      },
+      {
+        "title": "Summary Freshness",
+        "type": "timeseries",
+        "gridPos": {"h": 6, "w": 8, "x": 8, "y": 20},
+        "targets": [
+          {"rawSql": "SELECT ts AS time, value AS \"Hours Since Update\" FROM pm_metrics WHERE metric='summary_freshness_hours' ORDER BY ts", "format": "time_series"}
+        ],
+        "fieldConfig": {"defaults": {"unit": "h", "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "red", "value": 168}]}}}
+      },
+      {
+        "title": "Golden Dataset Size",
+        "type": "timeseries",
+        "gridPos": {"h": 6, "w": 8, "x": 16, "y": 20},
+        "targets": [
+          {"rawSql": "SELECT ts AS time, value AS \"QA Pairs\" FROM pm_metrics WHERE metric='golden_count' ORDER BY ts", "format": "time_series"}
+        ]
+      }
+    ]
+  },
+  "overwrite": true
+}
