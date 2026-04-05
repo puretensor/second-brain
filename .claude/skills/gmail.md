@@ -1,0 +1,39 @@
+---
+name: gmail
+description: Search inbox, read emails, and create drafts via the pureMind Gmail integration
+---
+
+# Gmail Integration
+
+Search, read, and draft emails through the pureMind permission-enforced Gmail wrapper. Drafts only -- no direct sending.
+
+## Available Operations
+
+```bash
+# Search inbox
+python3 ~/pureMind/.claude/integrations/gmail_integration.py search --query "from:scan.co.uk invoice" --account hal
+
+# List inbox (recent messages)
+python3 ~/pureMind/.claude/integrations/gmail_integration.py list_inbox --account hal --limit 20
+
+# List unread messages
+python3 ~/pureMind/.claude/integrations/gmail_integration.py list_unread --account hal
+
+# Read a specific message
+python3 ~/pureMind/.claude/integrations/gmail_integration.py get --id <message_id> --account hal
+
+# Create a draft (does NOT send)
+python3 ~/pureMind/.claude/integrations/gmail_integration.py create_draft --to user@example.com --subject "Re: Quote" --body "Draft text" --account hal
+```
+
+## Accounts
+
+- `hal` (default) -- hal@puretensor.ai (primary)
+- `ops` -- ops@puretensor.ai
+- `personal` -- heimir.helgason@gmail.com
+
+## Constraints
+
+- **No sending.** Drafts only. User must approve via Gmail or /approve before sending.
+- **No trash/delete/spam.** Read and draft operations only.
+- All operations are logged to the pm_audit table.

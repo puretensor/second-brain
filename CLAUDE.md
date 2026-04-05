@@ -83,3 +83,36 @@ python3 ~/pureMind/tools/index.py --full      # Full re-index
 - `tools/index.py` -- full + incremental indexing with SHA-256 change detection
 - `tools/search.py` -- hybrid BM25+vector search with RRF fusion (k=60)
 - `migrations/001_puremind_rag.sql` -- database schema
+
+## Direct Integrations (Phase 4)
+
+Permission-enforced wrappers in `.claude/integrations/` over existing tools. Every call logged to `pm_audit` table.
+
+### Permission Model
+
+| Integration | Read | Write | Blocked |
+|---|---|---|---|
+| Gmail | search, get, list_inbox, list_unread | create_draft only | send, trash, delete, spam, filters |
+| GitHub | list_repos, list_prs, list_issues, get_pr, get_issue | comment_pr, comment_issue, create_issue | merge, push, close, delete |
+| Calendar | list_events, get_event, search_events | None (read-only) | create, update, delete |
+| Telegram | read_channel | post_alert (alerts channel only) | DMs, other channels |
+
+### Usage
+```bash
+python3 ~/pureMind/.claude/integrations/gmail_integration.py search --query "invoice" --account hal
+python3 ~/pureMind/.claude/integrations/github_integration.py list_prs PureClaw --state open
+python3 ~/pureMind/.claude/integrations/calendar_integration.py list_events --days 2 --account ops
+python3 ~/pureMind/.claude/integrations/telegram_integration.py post_alert "Deployment complete"
+```
+
+### Skills
+- `/gmail` -- search inbox, read threads, create drafts
+- `/github` -- list PRs/issues, read details, comment
+- `/calendar` -- list upcoming events, search events
+- `/alerts` -- post to pureMind Telegram alerts channel
+- `/briefing` -- morning briefing combining all integrations
+
+### Components
+- `.claude/integrations/base.py` -- audit logging, rate limiting, @audited decorator
+- `.claude/integrations/{gmail,github,calendar,telegram}_integration.py` -- wrappers
+- `migrations/002_audit_log.sql` -- pm_audit table schema
