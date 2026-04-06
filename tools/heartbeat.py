@@ -625,17 +625,17 @@ def notify(summary: str, attention: list[str], action_results: list[dict],
     message = "\n".join(parts)
 
     if dry_run:
-        return message
+        return message, True
 
     try:
         _run_integration([
             str(INTEGRATIONS_DIR / "telegram_integration.py"),
             "post_alert", message[:4000],  # Telegram message limit
         ])
+        return message, True
     except Exception as e:
         print(f"WARNING: Telegram notification failed: {e}", file=sys.stderr)
-
-    return message
+        return message, False
 
 
 def log_results(state_summary: dict, response: dict, action_results: list[dict],
@@ -849,18 +849,16 @@ def main():
 
     # 4. NOTIFY + LOG
     # A-01: single deterministic Telegram notification (not Claude-proposed)
-    notify_ok = True
-    notification = notify(
+    notification, notify_ok = notify(
         summary=response.get("summary", ""),
         attention=response.get("attention_needed", []),
         action_results=action_results,
         level=level,
         remediation_summary=remediation_summary,
     )
-    if "WARNING" not in notification:
+    if notify_ok:
         print(f"\nNotification posted to Telegram")
     else:
-        notify_ok = False
         print(f"\nWARNING: Telegram notification may have failed")
 
     log_results(
