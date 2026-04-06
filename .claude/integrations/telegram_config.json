@@ -1,5 +1,5 @@
 {
-    "bot_token": "REDACTED_TELEGRAM_TOKEN",
-    "chat_id": "22276981",
+    "bot_token": "RESOLVE_VIA_CREDENTIALS_PY",
+    "chat_id": "RESOLVE_VIA_CREDENTIALS_PY",
     "note": "Using existing PureTensor-Alerts bot and operator chat. Dedicated pureMind channel can be created later."
 }

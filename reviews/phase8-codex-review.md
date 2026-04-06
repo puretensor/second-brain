@@ -1072,8 +1072,8 @@ Included separately above in the "What To Look For" context. Contains: threat mo
 # Rotate quarterly. Last rotated: 2026-04-05
 
 PUREMIND_DB_DSN=postgresql://raguser:<set-via-secrets-env>@100.103.248.9:30433/vantage
-PUREMIND_TELEGRAM_TOKEN=REDACTED_TELEGRAM_TOKEN
-PUREMIND_TELEGRAM_CHAT_ID=22276981
+PUREMIND_TELEGRAM_TOKEN=<set-via-secrets-env>
+PUREMIND_TELEGRAM_CHAT_ID=<set-via-secrets-env>
 ```
 
 ## Prioritized Fix List
