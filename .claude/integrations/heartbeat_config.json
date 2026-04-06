@@ -12,5 +12,12 @@
     "stale_pr_days": 3,
     "overdue_pending_days": 7,
     "unread_email_alert": 20
+  },
+  "fleet_health": {
+    "enabled": true,
+    "alert_disk_pct": 80,
+    "remediation_enabled": true,
+    "journal_warn_gb": 2.0,
+    "crash_loop_restart_threshold": 5
   }
 }

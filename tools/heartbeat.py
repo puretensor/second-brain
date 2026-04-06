@@ -31,6 +31,7 @@ _VAULT_STR = str(PUREMIND_ROOT)
 if _VAULT_STR not in sys.path:
     sys.path.insert(0, _VAULT_STR)
 from tools.sanitize import sanitize_content
+from tools.remediate import check_and_fix as remediate_fleet
 INTEGRATIONS_DIR = PUREMIND_ROOT / ".claude" / "integrations"
 CONFIG_FILE = INTEGRATIONS_DIR / "heartbeat_config.json"
 HEARTBEAT_LOG = PUREMIND_ROOT / "daily-logs" / "heartbeat-log.jsonl"
@@ -63,7 +64,7 @@ You are operating at proactivity level: **{level}**
 Output a JSON object with exactly these keys:
 
 1. "priority_items": list of objects, each with:
-   - "source": one of "email", "github", "calendar", "pending", "vault"
+   - "source": one of "email", "github", "calendar", "pending", "vault", "fleet"
    - "summary": one-line description of what needs attention
    - "urgency": one of "high", "medium", "low"
 
@@ -111,6 +112,12 @@ IMPORTANT:
 
 ### Vault Context (deadlines/overdue)
 {vault_state}
+
+### Fleet Health (node status)
+{fleet_health_state}
+
+### Self-Healing (auto-remediation results)
+{remediation_state}
 
 ### Current Date/Time
 {current_time}
@@ -230,6 +237,33 @@ def gather_state(config: dict) -> dict:
     else:
         state["vault"] = "[]"
 
+    # Fleet health (quick check via Tailscale SSH)
+    fleet_health_enabled = config.get("fleet_health", {}).get("enabled", True)
+    if fleet_health_enabled:
+        fleet_script = INTEGRATIONS_DIR / "fleet_health_integration.py"
+        if fleet_script.exists():
+            state["fleet_health"] = _run_integration(
+                [str(fleet_script), "quick_check", "--json"],
+                timeout=35,
+            )
+        else:
+            state["fleet_health"] = json.dumps({"error": "fleet_health_integration.py not found"})
+
+    # Self-healing: auto-remediate known patterns (deterministic, no LLM needed)
+    remediation_enabled = config.get("fleet_health", {}).get("remediation_enabled", True)
+    if fleet_health_enabled and remediation_enabled:
+        try:
+            report = remediate_fleet(dry_run=False)
+            state["remediation"] = json.dumps({
+                "summary": report.get("summary", {}),
+                "fixes": report.get("fixes", []),
+                "escalate": report.get("escalate", []),
+            })
+        except Exception as e:
+            state["remediation"] = json.dumps({"error": str(e)[:200]})
+    else:
+        state["remediation"] = json.dumps({"status": "disabled"})
+
     return state
 
 
@@ -261,6 +295,8 @@ def build_prompt(state: dict, level: str) -> str:
         telegram_state=safe_state.get("telegram", "(unavailable)"),
         pending_state=safe_state.get("pending", "(no pending items)"),
         vault_state=safe_state.get("vault", "(no vault context)"),
+        fleet_health_state=safe_state.get("fleet_health", "(fleet health unavailable)"),
+        remediation_state=safe_state.get("remediation", "(remediation not run)"),
         current_time=now.strftime("%Y-%m-%d %H:%M UTC (%A)"),
     )
 
@@ -563,9 +599,17 @@ def execute_actions(actions: list[dict]) -> list[dict]:
 
 
 def notify(summary: str, attention: list[str], action_results: list[dict],
-           level: str, dry_run: bool = False) -> str:
+           level: str, remediation_summary: dict | None = None,
+           dry_run: bool = False) -> str:
     """Post structured summary to Telegram."""
     parts = [f"Heartbeat ({level}):", summary]
+
+    # Self-healing results
+    if remediation_summary:
+        fixed = remediation_summary.get("fixed", 0)
+        escalate = remediation_summary.get("escalate", 0)
+        if fixed > 0 or escalate > 0:
+            parts.append(f"\nSelf-healing: {fixed} fixed, {escalate} need human")
 
     if attention:
         parts.append(f"\nNeeds attention ({len(attention)}):")
@@ -726,9 +770,22 @@ def main():
     print(f"=== pureMind Heartbeat {'(DRY RUN) ' if args.dry_run else ''}-- {now.strftime('%Y-%m-%d %H:%M UTC')} ===")
     print(f"Proactivity level: {level}\n")
 
-    # 1. GATHER
+    # 1. GATHER (includes fleet health + auto-remediation)
     print("Gathering state...")
     state = gather_state(config)
+
+    # Extract remediation summary for notification
+    remediation_summary = None
+    try:
+        rem_data = json.loads(state.get("remediation", "{}"))
+        remediation_summary = rem_data.get("summary")
+        if remediation_summary:
+            fixed = remediation_summary.get("fixed", 0)
+            escalate = remediation_summary.get("escalate", 0)
+            if fixed > 0 or escalate > 0:
+                print(f"Self-healing: {fixed} issues fixed, {escalate} escalated")
+    except (json.JSONDecodeError, TypeError):
+        pass
 
     if args.dry_run:
         print("\n--- Gathered State ---")
@@ -789,6 +846,7 @@ def main():
         attention=response.get("attention_needed", []),
         action_results=action_results,
         level=level,
+        remediation_summary=remediation_summary,
     )
     if "WARNING" not in notification:
         print(f"\nNotification posted to Telegram")

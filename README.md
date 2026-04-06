@@ -16,7 +16,7 @@ Five planes, one LLM. Claude Code is the reasoning layer across all of them.
 | **Interaction** | Search, Q&A, writing, meeting prep | Claude Code CLI as primary interface | 1 (live), 5 |
 | **Action** | Agent workflows, tool execution, memory write-back | Claude Code skills + hooks, Agent SDK for cron | 2, 5, 6 |
 
-### What is live now (Phases 1-8)
+### What is live now (Phases 1-9 + Insights)
 - Git-backed Obsidian-compatible vault with core identity files (soul.md, user.md, memory.md)
 - Auto-commit hook, SessionStart/PreCompact/SessionEnd hooks, daily reflection cron (23:00 UTC)
 - Hybrid RAG search (BM25 + pgvector semantic with RRF fusion) over all vault content
@@ -28,10 +28,12 @@ Five planes, one LLM. Claude Code is the reasoning layer across all of them.
 - Hierarchical summaries: RAPTOR-style tree (file -> project -> vault) with embeddings
 - Permission-enforced integrations: Gmail (read+draft), GitHub (read+comment), Calendar (read), Telegram (alerts)
 - Audit logging: every integration call tracked in pm_audit table with latency, params, result
-- 15 skills: briefing, search, gmail, github, calendar, alerts, draft-email, reflect, project-status, diagram, write, research, ingest, self-evolve, heartbeat
+- 17 skills: briefing, search, gmail, github, calendar, alerts, draft-email, reflect, project-status, diagram, write, research (quick/deep), ingest, self-evolve, heartbeat, health-sweep, migrate
 - Content ingestion tool: PDF, markdown, text, URL ingestion with provenance frontmatter
 - Self-evolving skill creation: pureMind creates its own new skills by analyzing existing patterns
-- Proactive heartbeat agent: 30-minute cron gathers state from all integrations, reasons via Claude, acts within permissions, posts Telegram summary
+- Proactive heartbeat agent: 30-minute cron gathers state from all integrations + fleet health (parallel SSH to 10 nodes in <1s), reasons via Claude, acts within permissions, posts Telegram summary
+- Fleet health integration: parallel node checks (reachability, disk, load, services) via Tailscale SSH
+- Test-driven migration runner: bash test_* discovery, per-step validation, 3-consecutive-failure stop logic
 - Graduated proactivity: observer (report) -> adviser (draft) -> partner (act) -- config-driven trust levels
 - Credential externalization: secrets resolved via env var > file > fail closed (no hardcoded fallback)
 - Content sanitization pipeline: 4-layer sanitization on all Claude-facing prompts (NFKC + Unicode stripping, narrowed injection patterns, case-insensitive fence escaping, size limits)

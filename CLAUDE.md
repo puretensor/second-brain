@@ -105,6 +105,8 @@ python3 ~/pureMind/.claude/integrations/gmail_integration.py search --query "inv
 python3 ~/pureMind/.claude/integrations/github_integration.py list_prs PureClaw --state open
 python3 ~/pureMind/.claude/integrations/calendar_integration.py list_events --days 2 --account ops
 python3 ~/pureMind/.claude/integrations/telegram_integration.py post_alert "Deployment complete"
+python3 ~/pureMind/.claude/integrations/fleet_health_integration.py quick_check --json
+python3 ~/pureMind/.claude/integrations/fleet_health_integration.py deep_check --json
 ```
 
 ### Skills
@@ -116,12 +118,12 @@ python3 ~/pureMind/.claude/integrations/telegram_integration.py post_alert "Depl
 
 ### Components
 - `.claude/integrations/base.py` -- audit logging, rate limiting, @audited decorator
-- `.claude/integrations/{gmail,github,calendar,telegram}_integration.py` -- wrappers
+- `.claude/integrations/{gmail,github,calendar,telegram,fleet_health}_integration.py` -- wrappers
 - `migrations/002_audit_log.sql` -- pm_audit table schema
 
 ## Skills Framework (Phase 5)
 
-15 skills in `.claude/skills/`. Skills are markdown instructions that compose existing tools and integrations. All have machine-readable YAML frontmatter (inputs, outputs, writes_to, side_effects).
+17 skills in `.claude/skills/`. Skills are markdown instructions that compose existing tools and integrations. All have machine-readable YAML frontmatter (inputs, outputs, writes_to, side_effects).
 
 ### Skill Library
 
@@ -138,10 +140,12 @@ python3 ~/pureMind/.claude/integrations/telegram_integration.py post_alert "Depl
 | `/project-status` | Project summary from vault, daily logs, and GitHub |
 | `/diagram` | Generate Mermaid/Excalidraw diagrams |
 | `/write` | Long-form writing with style templates |
-| `/research` | Vault-first deep research with web fallback and citations |
+| `/research` | Parallel research pipeline (quick/deep) with multi-source cross-checking |
 | `/ingest` | Ingest URLs, PDFs, docs into knowledge base with provenance |
 | `/self-evolve` | Create or modify skills by analyzing existing patterns |
 | `/heartbeat` | Manually trigger the proactive heartbeat agent |
+| `/health-sweep` | Deep fleet health sweep with parallel per-node diagnostics |
+| `/migrate` | Test-driven infrastructure migration with acceptance tests |
 
 ### Content Ingestion
 ```bash
@@ -181,9 +185,30 @@ python3 ~/pureMind/.claude/integrations/github_integration.py list_prs PureClaw 
 python3 ~/pureMind/.claude/integrations/telegram_integration.py read_channel --json
 ```
 
+### Fleet Health Monitoring
+
+The heartbeat includes fleet-wide health checks via `fleet_health_integration.py`. Every 30-minute cycle, all 10 nodes are checked in parallel (<1s) for reachability, disk usage, and load average. Fleet alerts appear alongside email/GitHub/calendar in the Claude reasoning prompt.
+
+```bash
+python3 ~/pureMind/.claude/integrations/fleet_health_integration.py quick_check --json  # <30s heartbeat mode
+python3 ~/pureMind/.claude/integrations/fleet_health_integration.py deep_check --json   # 2-3 min full sweep
+python3 ~/pureMind/.claude/integrations/fleet_health_integration.py quick_check --node fox-n1 --json
+```
+
+### Migration Test Runner
+
+Test-driven migration validation tool. Discovers `test_*` bash functions, runs them, and implements 3-consecutive-failure stop logic.
+
+```bash
+python3 ~/pureMind/tools/migrate_test_runner.py /tmp/tests.sh --json     # Run all tests
+python3 ~/pureMind/tools/migrate_test_runner.py /tmp/tests.sh --test test_dns  # Single test
+```
+
 ### Components
 - `tools/heartbeat.py` -- main orchestrator (gather/reason/act/notify loop)
-- `.claude/integrations/heartbeat_config.json` -- repos, accounts, thresholds, proactivity level
+- `tools/migrate_test_runner.py` -- bash test discovery and execution with stop logic
+- `.claude/integrations/heartbeat_config.json` -- repos, accounts, thresholds, fleet health config
+- `.claude/integrations/fleet_health_integration.py` -- parallel SSH fleet health checks
 - `puremind-heartbeat.timer` + `.service` -- systemd timer (every 30 min, 07:00-22:30 UTC)
 - `daily-logs/heartbeat-log.jsonl` -- structured heartbeat result log
 
