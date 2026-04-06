@@ -15,7 +15,6 @@ content_type: pdf|markdown|text|html|stdin
 blob_sha256: ""
 untrusted_source: true|false
 snapshot_path: "sources/snapshots/..."
-canonical_pages: []
 ---
 ```
 
@@ -32,7 +31,6 @@ canonical_pages: []
 | `blob_sha256` | Recommended | SHA-256 of the original file for integrity verification |
 | `untrusted_source` | Yes | true if content came from external/untrusted origin |
 | `snapshot_path` | If captured | Vault-relative path to the markdown snapshot |
-| `canonical_pages` | Yes | List of wiki page filenames created/updated from this source |
 
 ## Body
 

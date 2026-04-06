@@ -18,7 +18,7 @@ Immutable raw material layer. Files here are never edited after registration.
 
 ## Workflow
 
-1. Content arrives (URL, PDF, document, conversation)
+1. Content arrives (URL, PDF, document, text)
 2. Create a manifest in `manifests/<source_id>.md` using `templates/source-manifest.md`
 3. Optionally capture a markdown snapshot in `snapshots/<source_id>.md`
 4. Add entry to `index.md`

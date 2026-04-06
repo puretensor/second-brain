@@ -71,7 +71,6 @@ content_type: pdf|markdown|text|html|stdin
 blob_sha256: ""
 untrusted_source: true|false
 snapshot_path: "sources/snapshots/..."
-canonical_pages: []
 ---
 ```
 
