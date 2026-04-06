@@ -25,7 +25,8 @@ Navigation entrypoint for the knowledge base. Pages here are canonical wiki cont
 
 ### Research
 
-*No pages yet.*
+- [[llm-os-pattern]] -- Architectural pattern framing LLMs as operating system kernels that orchestrate memory, tools, and I/O.
+- [[puremind-architecture]] -- How pureMind implements the LLM OS pattern as a persistent second brain for PureTensor infrastructure.
 
 ### Drafts
 
@@ -41,4 +42,4 @@ Navigation entrypoint for the knowledge base. Pages here are canonical wiki cont
 
 ---
 
-**Catalog:** 6 pages (0 wiki, 2 ingest, 4 bare).
+**Catalog:** 8 pages (2 wiki, 2 ingest, 4 bare).

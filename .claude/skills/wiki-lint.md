@@ -1,7 +1,7 @@
 ---
 name: wiki-lint
 description: Run wiki lint, review findings, fix or propose fixes, log changes
-inputs: [file_filter, fix]
+inputs: [file, fix]
 outputs: [lint_report, fixes_applied]
 writes_to: [knowledge/, knowledge/index.md, knowledge/log.md]
 side_effects: [incremental_reindex]

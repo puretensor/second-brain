@@ -1,7 +1,7 @@
 ---
 name: wiki-ingest
 description: Register a source, synthesize wiki pages, update index and log
-inputs: [source, title, category, tags, source_url]
+inputs: [source, title, source_url]
 outputs: [source_id, pages_created, pages_updated]
 writes_to: [sources/manifests/, sources/snapshots/, sources/index.md, knowledge/, knowledge/index.md, knowledge/log.md]
 side_effects: [incremental_reindex]
@@ -21,9 +21,6 @@ Register the content as an immutable source using `register_source.py`.
 # Local file (markdown, text, html)
 python3 ~/pureMind/tools/register_source.py ~/path/to/file.md --title "Title"
 
-# Local PDF (manifest only, no binary in git)
-python3 ~/pureMind/tools/register_source.py ~/path/to/paper.pdf --title "Paper Title"
-
 # Stdin (e.g., from WebFetch)
 python3 ~/pureMind/tools/register_source.py --from-stdin \
   --title "Article Title" \
@@ -32,9 +29,11 @@ python3 ~/pureMind/tools/register_source.py --from-stdin \
 
 Note the `source_id` from the output (e.g., `src-20260406-article-title`).
 
+**PDF sources:** PDFs are registered as manifest-only (no text snapshot, no binary in git). Registration records the file path and SHA-256 hash. To synthesize wiki pages from a PDF, first extract its text via `tools/ingest.py` or manual reading, then register the extracted text as a separate stdin source. Do not attempt synthesis directly from a manifest-only PDF registration.
+
 ### Step 2: Read the manifest and snapshot
 
-Read the created manifest in `sources/manifests/<source_id>.md` and the snapshot in `sources/snapshots/<source_id>.md` (if one was created). Understand the content before synthesizing wiki pages.
+Read the created manifest in `sources/manifests/<source_id>.md` and the snapshot in `sources/snapshots/<source_id>.md`. Use the snapshot content to understand the source before synthesizing wiki pages. If no snapshot exists (PDF registration), synthesis cannot proceed -- extract text first (see PDF note above).
 
 ### Step 3: Synthesize wiki pages
 
