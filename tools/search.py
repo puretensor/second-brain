@@ -339,12 +339,14 @@ def graph_search(query: str, limit: int = 5, file_filter: str | None = None,
                     where_extra = " AND file_path LIKE %s"
                     params_extra = [f"{file_filter}%"]
 
+                chunk_id_list = list(chunk_ids)
                 with conn.cursor() as cur:
                     cur.execute(f"""
                         SELECT id, file_path, heading_path, chunk_index, content
                         FROM puremind_chunks
                         WHERE id = ANY(%s){where_extra}
-                    """, [list(chunk_ids)] + params_extra)
+                        ORDER BY array_position(%s, id)
+                    """, [chunk_id_list] + params_extra + [chunk_id_list])
                     for rank, r in enumerate(cur.fetchall()):
                         graph_rows.append({
                             "id": r[0], "file_path": r[1], "heading_path": r[2],
