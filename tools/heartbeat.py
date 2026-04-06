@@ -249,11 +249,11 @@ def gather_state(config: dict) -> dict:
         else:
             state["fleet_health"] = json.dumps({"error": "fleet_health_integration.py not found"})
 
-    # Self-healing: auto-remediate known patterns (deterministic, no LLM needed)
+    # Self-healing: discover remediable issues (dry-run only in gather phase)
     remediation_enabled = config.get("fleet_health", {}).get("remediation_enabled", True)
     if fleet_health_enabled and remediation_enabled:
         try:
-            report = remediate_fleet(dry_run=False)
+            report = remediate_fleet(dry_run=True)
             state["remediation"] = json.dumps({
                 "summary": report.get("summary", {}),
                 "fixes": report.get("fixes", []),
@@ -734,6 +734,12 @@ def git_commit(message: str):
                 ["git", "-C", str(PUREMIND_ROOT), "commit", "-m", message],
                 capture_output=True, timeout=10,
             )
+            # Auto-push to Gitea (private, high-frequency heartbeat commits).
+            # GitHub stays manual-push only (public repo, curated history).
+            subprocess.run(
+                ["git", "-C", str(PUREMIND_ROOT), "push", "gitea", "main"],
+                capture_output=True, timeout=30,
+            )
     except Exception as e:
         print(f"WARNING: Git commit failed: {e}", file=sys.stderr)
 
@@ -774,19 +780,6 @@ def main():
     print("Gathering state...")
     state = gather_state(config)
 
-    # Extract remediation summary for notification
-    remediation_summary = None
-    try:
-        rem_data = json.loads(state.get("remediation", "{}"))
-        remediation_summary = rem_data.get("summary")
-        if remediation_summary:
-            fixed = remediation_summary.get("fixed", 0)
-            escalate = remediation_summary.get("escalate", 0)
-            if fixed > 0 or escalate > 0:
-                print(f"Self-healing: {fixed} issues fixed, {escalate} escalated")
-    except (json.JSONDecodeError, TypeError):
-        pass
-
     if args.dry_run:
         print("\n--- Gathered State ---")
         for key, val in state.items():
@@ -821,6 +814,22 @@ def main():
     print(f"Priority items: {len(response.get('priority_items', []))}")
     print(f"Proposed actions: {len(response.get('proposed_actions', []))}")
     print(f"Attention needed: {len(response.get('attention_needed', []))}")
+
+    # 2.5. AUTO-REMEDIATE (deterministic, no LLM -- runs in act phase, not gather)
+    remediation_summary = None
+    rem_enabled = config.get("fleet_health", {}).get("remediation_enabled", True)
+    fh_enabled = config.get("fleet_health", {}).get("enabled", True)
+    if fh_enabled and rem_enabled:
+        try:
+            print("Running self-healing remediation...")
+            rem_report = remediate_fleet(dry_run=False)
+            remediation_summary = rem_report.get("summary")
+            fixed = (remediation_summary or {}).get("fixed", 0)
+            escalate = (remediation_summary or {}).get("escalate", 0)
+            if fixed > 0 or escalate > 0:
+                print(f"Self-healing: {fixed} fixed, {escalate} escalated")
+        except Exception as e:
+            print(f"WARNING: Remediation failed: {e}", file=sys.stderr)
 
     # 3. ACT
     allowed, rejected = filter_actions(
