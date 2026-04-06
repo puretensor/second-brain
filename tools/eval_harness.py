@@ -191,10 +191,9 @@ def eval_retrieval(limit: int = 10) -> dict:
         # Extract chunk IDs from results
         retrieved_ids = []
         for r in results:
-            if "chunk_id" in r:
-                retrieved_ids.append(r["chunk_id"])
-            elif "id" in r:
-                retrieved_ids.append(r["id"])
+            rid = r.get("chunk_id") or r.get("id")
+            if rid is not None and rid > 0:  # filter summary matches (negative IDs)
+                retrieved_ids.append(rid)
 
         rr = _reciprocal_rank(relevant, retrieved_ids)
         r5 = _recall_at_k(relevant, retrieved_ids, 5)
