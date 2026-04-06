@@ -1,3 +1,12 @@
+---
+title: "Lessons Learned"
+page_type: overview
+status: active
+source_refs: []
+aliases: [lessons, incident-lessons]
+updated: 2026-04-06
+---
+
 # Lessons Learned
 
 Prevent repeating mistakes. Each entry is a documented incident with root cause.
@@ -67,3 +76,8 @@ Prevent repeating mistakes. Each entry is a documented incident with root cause.
 - Internal monitoring is blind to public outages. Use GCP Uptime Checks.
 - gmail.py multi-recipient: must .split(',') for RCPT TO.
 - Google Drive default: ops account. Never personal.
+
+## Related
+
+- [[services]] -- service registry referenced in many incidents
+- [[corporate]] -- naming and comms standards that lessons enforce

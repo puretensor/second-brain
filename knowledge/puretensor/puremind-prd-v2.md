@@ -7,6 +7,10 @@ category: puretensor
 source_type: pdf
 tags: [puremind, prd]
 ingested_by: pureMind
+page_type: project
+status: needs-review
+source_refs: []
+updated: 2026-04-06
 ---
 
 # pureMind PRD v2
@@ -416,3 +420,8 @@ pureMind runs entirely on Claude Code CLI (Max 20x) + Obsidian + pgvector. No AP
 dependencies. The subscription is the infrastructure.
 PT-2026-SB v2 | 2026-04-04 | PureTensor, Inc.
 PureTensor pureMind | PT-2026-SB | Page 16 of 16 CONFIDENTIAL
+
+## Related
+
+- [[puremind-architecture]] -- current architecture (evolved beyond this PRD)
+- [[services]] -- live service registry

@@ -1,3 +1,12 @@
+---
+title: "Key Contacts"
+page_type: entity
+status: active
+source_refs: []
+aliases: [contacts, contact-directory]
+updated: 2026-04-06
+---
+
 # Key Contacts
 
 ## PureTensor Team
@@ -39,3 +48,7 @@
 
 ### Kristjan Gudbjartsson
 - Credit Assessment / Corporate Loans, Landsbankinn. LinkedIn: is.linkedin.com/in/kristjan-gudbjartsson-600aa241
+
+## Related
+
+- [[corporate]] -- PureTensor entity details and naming standards

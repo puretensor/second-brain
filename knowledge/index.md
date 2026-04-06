@@ -42,4 +42,4 @@ Navigation entrypoint for the knowledge base. Pages here are canonical wiki cont
 
 ---
 
-**Catalog:** 8 pages (2 wiki, 2 ingest, 4 bare).
+**Catalog:** 8 pages (8 wiki, 0 ingest, 0 bare).

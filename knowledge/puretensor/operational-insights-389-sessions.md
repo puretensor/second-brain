@@ -5,6 +5,10 @@ category: puretensor
 tags: [insights, operational-patterns, friction-analysis, self-improvement]
 source: "Claude Code /insights system"
 ingested_by: pureMind
+page_type: overview
+status: active
+source_refs: []
+updated: 2026-04-06
 ---
 
 # Operational Insights from 389 Claude Code Sessions
@@ -44,3 +48,8 @@ Define acceptance tests for the desired end state before making any changes. Exe
 - Pattern 1: Implemented as fleet_health_integration.py + heartbeat extension (Phase 2, April 2026)
 - Pattern 2: Implemented as /research skill upgrade with depth=deep mode (Phase 4, April 2026)
 - Pattern 3: Implemented as /migrate skill with migrate_test_runner.py (Phase 5, April 2026)
+
+## Related
+
+- [[puremind-architecture]] -- the system these sessions operate
+- [[services]] -- infrastructure referenced in friction patterns

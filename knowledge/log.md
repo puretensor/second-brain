@@ -17,3 +17,8 @@ Notes: Phase 10 bootstrap. Established wiki layer scaffolding: sources/ director
 
 Created: [[llm-os-pattern]], [[puremind-architecture]]
 Notes: Ingested Karpathy's LLM OS pattern article. Created concept page for the pattern itself and overview page mapping it to pureMind's architecture. Both pages cross-linked and referencing the source.
+
+## [2026-04-06 12:15 UTC] migrate | wiki-layer-phase-6
+
+Updated: [[key-contacts]], [[corporate]], [[lessons]], [[services]], [[operational-insights-389-sessions]], [[puremind-prd-v2]]
+Notes: Added wiki frontmatter to 6 pre-existing knowledge pages. 4 bare pages got full frontmatter; 2 ingest pages got wiki fields merged alongside ingest metadata. Added cross-linking wikilinks (Related sections) across all 6 pages.

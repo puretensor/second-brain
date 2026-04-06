@@ -1,3 +1,12 @@
+---
+title: "PureTensor Services"
+page_type: entity
+status: active
+source_refs: []
+aliases: [services, service-registry]
+updated: 2026-04-06
+---
+
 # PureTensor Services Reference
 
 ## PureClaw / Nexus -- K3s on fox-n1
@@ -62,3 +71,8 @@
 - Routing: Cloudflare Tunnel -> K3s vaultwarden namespace
 - Namespace vaultwarden, NodePort 30800, PVC 5Gi local-path
 - Registration disabled (invite-only). Backup CronJob every 6h.
+
+## Related
+
+- [[corporate]] -- PureTensor entity and document standards
+- [[puremind-architecture]] -- how pureMind uses these services

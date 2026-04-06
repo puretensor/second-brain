@@ -1,3 +1,12 @@
+---
+title: "PureTensor Corporate"
+page_type: entity
+status: active
+source_refs: []
+aliases: [corporate, puretensor-corporate]
+updated: 2026-04-06
+---
+
 # PureTensor Corporate
 
 ## Naming
@@ -33,3 +42,8 @@
 ## External Comms
 - No em dashes in published content.
 - No precise infrastructure numbers in external documents. Use "hundreds of cores", "TBs of RAM", "PB-scale storage."
+
+## Related
+
+- [[services]] -- PureTensor service registry
+- [[key-contacts]] -- team and vendor contacts
