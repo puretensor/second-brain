@@ -1,5 +1,10 @@
-# Credentials -- never commit
-*credentials*
+# Credentials -- never commit actual secret files (credentials.py is code, not secrets)
+credentials.json
+*credentials*.env
+*credentials*.yml
+*credentials*.yaml
+*credentials*.cfg
+*credentials*.conf
 *secrets*
 *.env
 .env.*
