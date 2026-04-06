@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -375,10 +376,12 @@ def eval_security() -> dict:
     """Run test_sanitize.py and check audit completeness."""
     # Run pytest programmatically
     try:
+        # Include injection tests when Claude CLI is available (self-skipping otherwise)
+        test_files = ["tests/test_sanitize.py", "tests/test_eval.py"]
+        if shutil.which("claude"):
+            test_files.append("tests/test_injection.py")
         result = subprocess.run(
-            ["python3", "-m", "pytest",
-             "tests/test_sanitize.py", "tests/test_eval.py",
-             "-v", "--tb=short"],
+            ["python3", "-m", "pytest"] + test_files + ["-v", "--tb=short"],
             capture_output=True, text=True, timeout=30,
             cwd=str(VAULT_ROOT),
         )
