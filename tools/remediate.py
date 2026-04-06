@@ -324,7 +324,7 @@ def _log_remediation(node: str, fix_id: str, params: dict, success: bool, detail
     try:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO pm_audit (integration, function, params, result, detail, latency_ms)
+                """INSERT INTO pm_audit (integration, function, parameters, result, detail, latency_ms)
                    VALUES (%s, %s, %s, %s, %s, %s)""",
                 (INTEGRATION, f"remediate:{fix_id}",
                  json.dumps({"node": node, **params}),
@@ -332,8 +332,8 @@ def _log_remediation(node: str, fix_id: str, params: dict, success: bool, detail
                  detail[:500], latency_ms),
             )
         conn.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"WARNING: remediation audit log failed: {e}", file=sys.stderr)
 
 
 def apply_fix(issue: dict, dry_run: bool = False) -> dict:
