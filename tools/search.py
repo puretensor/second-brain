@@ -141,7 +141,7 @@ def _rrf_fuse(bm25_results: list[dict], sem_results: list[dict], limit: int) -> 
     scores: dict[int, float] = {}
     items: dict[int, dict] = {}
 
-    for rank, item in enumerate(bm25_results):
+    for rank, item in enumerate(bm25_results, start=1):
         fid = item["id"]
         scores[fid] = scores.get(fid, 0) + 1.0 / (RRF_K + rank)
         if fid not in items:
@@ -150,7 +150,7 @@ def _rrf_fuse(bm25_results: list[dict], sem_results: list[dict], limit: int) -> 
         else:
             items[fid]["sources"].append("bm25")
 
-    for rank, item in enumerate(sem_results):
+    for rank, item in enumerate(sem_results, start=1):
         fid = item["id"]
         scores[fid] = scores.get(fid, 0) + 1.0 / (RRF_K + rank)
         if fid not in items:
@@ -257,7 +257,7 @@ def _rrf_fuse_3way(bm25_results: list[dict], sem_results: list[dict],
     scores: dict[int, float] = {}
     items: dict[int, dict] = {}
 
-    for rank, item in enumerate(bm25_results):
+    for rank, item in enumerate(bm25_results, start=1):
         fid = item["id"]
         scores[fid] = scores.get(fid, 0) + 1.0 / (RRF_K + rank)
         if fid not in items:
@@ -266,7 +266,7 @@ def _rrf_fuse_3way(bm25_results: list[dict], sem_results: list[dict],
         else:
             items[fid]["sources"].append("bm25")
 
-    for rank, item in enumerate(sem_results):
+    for rank, item in enumerate(sem_results, start=1):
         fid = item["id"]
         scores[fid] = scores.get(fid, 0) + 1.0 / (RRF_K + rank)
         if fid not in items:
@@ -275,7 +275,7 @@ def _rrf_fuse_3way(bm25_results: list[dict], sem_results: list[dict],
         else:
             items[fid]["sources"].append("semantic")
 
-    for rank, item in enumerate(graph_results):
+    for rank, item in enumerate(graph_results, start=1):
         fid = item["id"]
         scores[fid] = scores.get(fid, 0) + 1.0 / (RRF_K + rank)
         if fid not in items:
