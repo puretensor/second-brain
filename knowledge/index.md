@@ -13,15 +13,15 @@ Navigation entrypoint for the knowledge base. Pages here are canonical wiki cont
 
 ### PureTensor
 
-- [[corporate]] -- Entity details, naming conventions, document standards
-- [[lessons]] -- Documented incidents and root causes across infrastructure, publishing, DNS, security
-- [[services]] -- Service reference: PureClaw, Publisher, vLLM, K3s, observability, backups
-- [[operational-insights-389-sessions]] -- Friction analysis from 389 Claude Code sessions
-- [[puremind-prd-v2]] -- pureMind product requirements document (Phase 1-9 spec)
+- [[corporate]] -- PureTensor -- one word, CamelCase. Always.
+- [[lessons]] -- Prevent repeating mistakes. Each entry is a documented incident with root cause.
+- [[operational-insights-389-sessions]] -- Analysis of 389 Claude Code sessions revealing friction patterns, anti-patterns, and high-value automation opportunities
+- [[puremind-prd-v2]] -- PURETENSOR, INC.
+- [[services]] -- Claude Code CLI backend (Max subscription, Sonnet 4.6 default), OAuth auto-refresh, observer framework
 
 ### Contacts
 
-- [[key-contacts]] -- PureTensor team, NVIDIA Inception, Icelandic network
+- [[key-contacts]] -- Alan Apter -- CTO. alan.apter@puretensor.ai. Reviews Bretalon articles. CV sent 2026-03-25.
 
 ### Research
 
@@ -41,4 +41,4 @@ Navigation entrypoint for the knowledge base. Pages here are canonical wiki cont
 
 ---
 
-**Migration status:** 6 pages cataloged. 4 pages need wiki frontmatter added. 2 pages (operational-insights, puremind-prd-v2) have ingest-tool frontmatter that needs wiki fields merged alongside. Scheduled for Phase 6.
+**Catalog:** 6 pages (0 wiki, 2 ingest, 4 bare).
