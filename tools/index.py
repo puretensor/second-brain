@@ -41,6 +41,8 @@ INDEX_PATTERNS = [
     "memory/pending.md",
     "CLAUDE.md",
     "README.md",
+    "sources/manifests/*.md",
+    "sources/snapshots/*.md",
 ]
 
 # Files to exclude from indexing (loaded at session start, don't need RAG)

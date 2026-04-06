@@ -27,13 +27,15 @@ import psycopg2
 from tools.db import get_conn, get_write_conn
 from tools.embed import embed_query, embedding_to_pgvector
 RRF_K = 60  # RRF constant (matches Nexus)
+WIKI_BOOST = 1.15  # knowledge/ results boosted 15% (wiki-first, CLAUDE.md rule 4)
 
 # F-01: whitelist of allowed PostgreSQL FTS configs -- no f-string interpolation
 ALLOWED_FTS_LANGS = {"english", "simple", "spanish", "danish", "german", "french", "italian", "portuguese"}
 
 
 def search(query: str, limit: int = 5, file_filter: str | None = None,
-           lang: str = "english") -> list[dict]:
+           lang: str = "english", wiki_boost: bool = True,
+           include_sources: bool = False) -> list[dict]:
     """Hybrid search: BM25 + vector similarity fused via RRF.
 
     Args:
@@ -123,10 +125,12 @@ def search(query: str, limit: int = 5, file_filter: str | None = None,
                         "score": float(r[4]),
                     })
 
-        # 3. RRF fusion (include summary results as additional candidates)
+        # 3. RRF fusion on overfetched candidates (truncation in _post_process)
         if summary_rows:
-            return _rrf_fuse_3way(bm25_rows, sem_rows, summary_rows, limit)
-        return _rrf_fuse(bm25_rows, sem_rows, limit)
+            results = _rrf_fuse_3way(bm25_rows, sem_rows, summary_rows, overfetch)
+        else:
+            results = _rrf_fuse(bm25_rows, sem_rows, overfetch)
+        return _post_process(results, limit, wiki_boost, include_sources)
 
     finally:
         conn.close()
@@ -169,6 +173,30 @@ def _rrf_fuse(bm25_results: list[dict], sem_results: list[dict], limit: int) -> 
         })
 
     return results
+
+
+# Meta pages excluded from wiki boost (navigation/changelog, not content)
+_WIKI_BOOST_EXCLUDE = {"knowledge/index.md", "knowledge/log.md"}
+
+
+def _apply_wiki_boost(results: list[dict]) -> list[dict]:
+    """Boost knowledge/ content pages to implement wiki-first ranking (CLAUDE.md rule 4)."""
+    for r in results:
+        fp = r["file_path"]
+        if fp.startswith("knowledge/") and fp not in _WIKI_BOOST_EXCLUDE:
+            r["rrf_score"] *= WIKI_BOOST
+    results.sort(key=lambda r: r["rrf_score"], reverse=True)
+    return results
+
+
+def _post_process(results: list[dict], limit: int,
+                  wiki_boost: bool, include_sources: bool) -> list[dict]:
+    """Apply wiki boost, filter sources, and truncate to final limit."""
+    if wiki_boost:
+        results = _apply_wiki_boost(results)
+    if not include_sources:
+        results = [r for r in results if not r["file_path"].startswith("sources/")]
+    return results[:limit]
 
 
 def extract_query_entities(conn, query: str) -> list[int]:
@@ -274,7 +302,8 @@ def _rrf_fuse_3way(bm25_results: list[dict], sem_results: list[dict],
 
 
 def graph_search(query: str, limit: int = 5, file_filter: str | None = None,
-                 lang: str = "english") -> list[dict]:
+                 lang: str = "english", wiki_boost: bool = True,
+                 include_sources: bool = False) -> list[dict]:
     """C-01: Graph-augmented search with true 3-way RRF fusion.
 
     Runs BM25, semantic, and graph retrieval as independent signals,
@@ -282,7 +311,8 @@ def graph_search(query: str, limit: int = 5, file_filter: str | None = None,
     """
     conn = get_conn()
     if conn is None:
-        return search(query, limit=limit, file_filter=file_filter, lang=lang)
+        return search(query, limit=limit, file_filter=file_filter, lang=lang,
+                      wiki_boost=wiki_boost, include_sources=include_sources)
 
     overfetch = limit * 3
 
@@ -379,8 +409,8 @@ def graph_search(query: str, limit: int = 5, file_filter: str | None = None,
     finally:
         conn.close()
 
-    # C-01: true 3-way fusion
-    results = _rrf_fuse_3way(bm25_rows, sem_rows, graph_rows, limit)
+    # C-01: true 3-way fusion on overfetched candidates
+    results = _rrf_fuse_3way(bm25_rows, sem_rows, graph_rows, overfetch)
 
     # Attach graph context
     if graph_entities:
@@ -388,11 +418,12 @@ def graph_search(query: str, limit: int = 5, file_filter: str | None = None,
         for r in results:
             r["graph_entities"] = entity_names
 
-    return results
+    return _post_process(results, limit, wiki_boost, include_sources)
 
 
 def hyde_search(query: str, limit: int = 5, file_filter: str | None = None,
-                lang: str = "english") -> list[dict]:
+                lang: str = "english", wiki_boost: bool = True,
+                include_sources: bool = False) -> list[dict]:
     """HyDE search: generate hypothetical answer, embed it, search with that embedding.
 
     D-02: Respects --lang parameter for BM25 component.
@@ -420,14 +451,16 @@ def hyde_search(query: str, limit: int = 5, file_filter: str | None = None,
         pass
 
     if not hypothetical_doc:
-        return search(query, limit=limit, file_filter=file_filter, lang=lang)
+        return search(query, limit=limit, file_filter=file_filter, lang=lang,
+                      wiki_boost=wiki_boost, include_sources=include_sources)
 
     hyde_vec = embed_query(hypothetical_doc)
     vec_str = embedding_to_pgvector(hyde_vec)
 
     conn = get_conn()
     if conn is None:
-        return search(query, limit=limit, file_filter=file_filter, lang=lang)
+        return search(query, limit=limit, file_filter=file_filter, lang=lang,
+                      wiki_boost=wiki_boost, include_sources=include_sources)
 
     overfetch = limit * 3
     try:
@@ -482,7 +515,8 @@ def hyde_search(query: str, limit: int = 5, file_filter: str | None = None,
                 for r in cur.fetchall()
             ]
 
-        return _rrf_fuse(bm25_rows, hyde_rows, limit)
+        results = _rrf_fuse(bm25_rows, hyde_rows, overfetch)
+        return _post_process(results, limit, wiki_boost, include_sources)
 
     finally:
         conn.close()
@@ -521,7 +555,7 @@ def format_results(results: list[dict]) -> str:
 def main():
     args = sys.argv[1:]
     if not args or args[0].startswith("-"):
-        print("Usage: search.py <query> [--limit N] [--json] [--file-filter prefix] [--graph] [--hyde]", file=sys.stderr)
+        print("Usage: search.py <query> [--limit N] [--json] [--file-filter prefix] [--graph] [--hyde] [--no-wiki-boost] [--include-sources]", file=sys.stderr)
         sys.exit(1)
 
     query = args[0]
@@ -530,6 +564,8 @@ def main():
     file_filter = None
     use_graph = False
     use_hyde = False
+    wiki_boost = True
+    include_sources = False
     lang = "english"
 
     i = 1
@@ -549,6 +585,12 @@ def main():
         elif args[i] == "--hyde":
             use_hyde = True
             i += 1
+        elif args[i] == "--no-wiki-boost":
+            wiki_boost = False
+            i += 1
+        elif args[i] == "--include-sources":
+            include_sources = True
+            i += 1
         elif args[i] == "--lang" and i + 1 < len(args):
             lang = args[i + 1]
             i += 2
@@ -556,11 +598,14 @@ def main():
             i += 1
 
     if use_graph:
-        results = graph_search(query, limit=limit, file_filter=file_filter, lang=lang)
+        results = graph_search(query, limit=limit, file_filter=file_filter, lang=lang,
+                               wiki_boost=wiki_boost, include_sources=include_sources)
     elif use_hyde:
-        results = hyde_search(query, limit=limit, file_filter=file_filter, lang=lang)
+        results = hyde_search(query, limit=limit, file_filter=file_filter, lang=lang,
+                              wiki_boost=wiki_boost, include_sources=include_sources)
     else:
-        results = search(query, limit=limit, file_filter=file_filter, lang=lang)
+        results = search(query, limit=limit, file_filter=file_filter, lang=lang,
+                         wiki_boost=wiki_boost, include_sources=include_sources)
 
     if json_output:
         print(json.dumps(results, indent=2))
