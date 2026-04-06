@@ -22,6 +22,13 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 PUREMIND_ROOT = Path.home() / "pureMind"
+
+# Ensure vault root is on path for sanitize import
+_VAULT_STR = str(PUREMIND_ROOT)
+if _VAULT_STR not in sys.path:
+    sys.path.insert(0, _VAULT_STR)
+from tools.sanitize import sanitize_content
+
 MEMORY_FILE = PUREMIND_ROOT / "memory" / "memory.md"
 PENDING_FILE = PUREMIND_ROOT / "memory" / "pending.md"
 DAILY_LOGS = PUREMIND_ROOT / "daily-logs"
@@ -385,6 +392,11 @@ def git_commit(message: str):
                 ["git", "-C", str(PUREMIND_ROOT), "commit", "-m", message],
                 capture_output=True, timeout=10,
             )
+            # Auto-push to Gitea (private). GitHub stays manual-push only.
+            subprocess.run(
+                ["git", "-C", str(PUREMIND_ROOT), "push", "gitea", "main"],
+                capture_output=True, timeout=30,
+            )
     except Exception as e:
         print(f"ERROR: Git commit failed: {e}", file=sys.stderr)
 
@@ -523,6 +535,12 @@ def main():
         print(f"Historical context: {len(historical_context)} chars")
         print("\nTo run for real, omit --dry-run.")
         sys.exit(0)
+
+    # Sanitize all inputs before prompt construction (indirect injection defense)
+    memory_content = sanitize_content(memory_content, max_chars=5000)
+    pending_content = sanitize_content(pending_content, max_chars=3000)
+    daily_log = sanitize_content(daily_log, max_chars=10000)
+    historical_context = sanitize_content(historical_context, max_chars=5000)
 
     # Build prompt
     prompt = REFLECTION_PROMPT.format(
