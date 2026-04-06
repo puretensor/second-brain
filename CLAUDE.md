@@ -19,6 +19,67 @@ This vault is a Git repository. Everything committed becomes permanent history. 
 - **RAM:** memory/memory.md (always loaded, <8K tokens)
 - **Disk:** daily-logs/, knowledge/, projects/ (searchable, not always loaded)
 
+## Wiki Layer (Phase 10)
+
+The wiki layer adds structure to the knowledge/ directory. Raw sources are registered in sources/, then synthesized into canonical wiki pages in knowledge/. This is a wiki-first system: answer from wiki pages first, fall back to raw sources or RAG only when wiki coverage is insufficient.
+
+### Directory Structure
+
+- `sources/` -- Immutable raw material (manifests, snapshots). Never edit after registration.
+- `sources/manifests/` -- One .md manifest per registered source (YAML frontmatter with provenance)
+- `sources/snapshots/` -- Captured markdown renderings of external content
+- `sources/index.md` -- Append-only source registry
+- `knowledge/index.md` -- Navigation entrypoint for the wiki (browse here first)
+- `knowledge/log.md` -- Append-only changelog of wiki modifications
+
+### Rules
+
+1. **Register before synthesize.** External content must be registered as a source (manifest in sources/manifests/) before creating or updating wiki pages from it.
+2. **Sources are immutable.** Once a manifest or snapshot is committed, it is never edited. Corrections go in new sources.
+3. **knowledge/ pages are canonical.** Wiki pages in knowledge/ are the authoritative, curated content. They are the first place to look for answers.
+4. **Wiki-first answering.** When answering questions, check knowledge/ wiki pages first. Use raw sources (sources/) second. Fall back to RAG search third.
+5. **Append-only changelog.** Every wiki modification (create, update, archive) gets an entry in knowledge/log.md.
+6. **Cross-link with wikilinks.** Use `[[page-name]]` to link between knowledge/ pages. Page names match filenames without the .md extension.
+7. **Frontmatter required.** New wiki pages must include the wiki frontmatter schema (title, page_type, status, source_refs, aliases, updated). See templates/wiki-page.md.
+8. **No binaries in Git.** PDFs, images, and large files stay on Ceph or external storage. Source manifests link to them via origin_path.
+
+### Wiki Page Frontmatter
+
+```yaml
+---
+title: "..."
+page_type: entity|concept|overview|comparison|project|source-summary
+status: seed|active|needs-review
+source_refs: []
+aliases: []
+updated: YYYY-MM-DD
+---
+```
+
+Pages created by `tools/ingest.py` retain their ingest frontmatter. Wiki fields are added alongside, not as replacements.
+
+### Source Manifest Frontmatter
+
+```yaml
+---
+source_id: src-YYYYMMDD-slug
+title: "..."
+origin_url: ""
+origin_path: ""
+captured_at: YYYY-MM-DDTHH:MM:SSZ
+content_type: pdf|markdown|text|html|stdin
+blob_sha256: ""
+untrusted_source: true|false
+snapshot_path: "sources/snapshots/..."
+canonical_pages: []
+---
+```
+
+### Templates
+
+- `templates/wiki-page.md` -- Wiki page template with frontmatter schema and body structure
+- `templates/source-manifest.md` -- Source manifest template with field definitions
+
 ## Daily Log Schema
 
 Each file in `daily-logs/` is named `YYYY-MM-DD.md`. Logs are structured capture appended throughout the day. Phase 2 hooks write to these automatically.
