@@ -348,6 +348,7 @@ def eval_latency() -> dict:
             """SELECT latency_ms FROM pm_audit
                WHERE latency_ms IS NOT NULL
                AND ts > now() - interval '7 days'
+               AND (integration = 'search' OR function LIKE '%%search%%')
                ORDER BY ts DESC"""
         )
         latencies = [row[0] for row in cur.fetchall()]
